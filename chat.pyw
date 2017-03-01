@@ -7,6 +7,7 @@ Send is bound to Shift-Enter
 -add timestamp
 -tls/ssl
 """
+import time
 import socket
 import Tkinter as Tk
 import multiprocessing
@@ -22,13 +23,14 @@ class ChatApplication(object):
     width = 550
     height = 500
     pipe_listener_delay = 250
-    current_local_msg = ""
     def __init__(self, root, pipe):
         self.root = root
         self.root.resizable(0, 0) # not resizeable
         self.root.title("Socket Chat")
 ##        self.root.iconbitmap(default='img/AGLRSymbol.ico')
         self.pipe = pipe
+        self.current_local_msg = ""
+        self.timestamp = time.strftime('%a, %b %d, %Y %H:%M:%S')
         self.center_window() # set the window geometry to display in the center of the screen
         # create a frame encompassing the entire root widget. While all other widgets
         # could be created straight on root, this allows some further customization ability.
@@ -61,11 +63,13 @@ class ChatApplication(object):
         self.spacer(self.master, row=4, column=1, columnspan=2, height=10)
         self.master.send.grid(row=5, column=1, sticky="e")
         #####
-        # draw master last to display when all else has been drawn.
+        # draw master last to display when all else has been drawn
         self.master.grid()
         #####
-        # start listener for messages passed through pipe.
+        # start listener for messages passed through pipe
         self.pipe_listener_ptr = self.root.after(self.pipe_listener_delay, self.listen_on_pipe)
+        # on startup, write the initial timestamp
+        self.display_msg('{0}\n'.format(self.timestamp), ('timestamp',))
     # END __init__()
 
     def spacer(self, parent, **kwargs):
@@ -125,6 +129,7 @@ class ChatApplication(object):
         self.master.display.tag_config('local', justify=Tk.RIGHT)
                                        #background="blue", foreground="white")
         self.master.display.tag_config('error', foreground="red")
+        self.master.display.tag_config('timestamp', justify=Tk.CENTER, foreground="gray")
     # END init_display()
 
     def init_input(self):
@@ -144,6 +149,8 @@ class ChatApplication(object):
     def display_local_msg(self):
         """Store the characters currently in the input window. Send them to be displayed
            on the input window. Clear the input window."""
+        #self.current_local_msg = '{0}: {1}'.format(socket.gethostname(),
+        #                                           self.master.input.get(1.0, Tk.END))
         self.current_local_msg = self.master.input.get(1.0, Tk.END)
         self.display_msg(self.current_local_msg, ('local',))
         self.master.input.delete(1.0, Tk.END)
@@ -169,6 +176,7 @@ class ChatApplication(object):
         ret = self.pipe.poll()
         if ret:
             msg = self.pipe.recv_bytes()
+            #self.display_msg('{0}: {1}'.format(CLIENT_HOST, msg))
             self.display_msg(msg)
         self.pipe_listener_ptr = self.root.after(self.pipe_listener_delay, self.listen_on_pipe)
     # END listen_on_pipe()
