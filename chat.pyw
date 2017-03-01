@@ -3,11 +3,10 @@ Send is bound to Shift-Enter
 
 -auto size window
 -negotiate connection start between two hosts based on computer name only
--change color and side where messages come through
--add timestamp
 -tls/ssl
 """
 import time
+import datetime
 import socket
 import Tkinter as Tk
 import multiprocessing
@@ -119,7 +118,8 @@ class ChatApplication(object):
 
     def init_display(self):
         """Create the UI objects associated witht the chat display, including text display tags."""
-        self.master.display = Tk.Text(self.master, state=Tk.DISABLED, width=65, height=17)
+        self.master.display = Tk.Text(self.master, state=Tk.DISABLED, width=65, height=17,
+                                      wrap=Tk.WORD)
         # link the Scrollbar to Text
         self.master.display_scroll = Tk.Scrollbar(self.master,
                                                   command=self.master.display.yview)
@@ -130,11 +130,12 @@ class ChatApplication(object):
                                        #background="blue", foreground="white")
         self.master.display.tag_config('error', foreground="red")
         self.master.display.tag_config('timestamp', justify=Tk.CENTER, foreground="gray")
+        self.master.display.tag_config('hostname', foreground="blue")
     # END init_display()
 
     def init_input(self):
         """Create the UI objects associated with the chat input window."""
-        self.master.input = Tk.Text(self.master, width=65, height=10)
+        self.master.input = Tk.Text(self.master, width=65, height=10, wrap=Tk.WORD)
         # link the Scrollbar to Text
         self.master.input_scroll = Tk.Scrollbar(self.master,
                                                 command=self.master.input.yview)
@@ -162,12 +163,29 @@ class ChatApplication(object):
         text_tags should be a tuple:
         ex: ('local',)"""
         self.master.display.config(state=Tk.NORMAL)
+        report_timestamp = self.report_update_timestamp()
+        if report_timestamp is not None:
+            self.display_msg('{0}\n'.format(report_timestamp), ('timestamp',))
+
         if text_tags is None:
             self.master.display.insert(Tk.END, msg)
         else:
             self.master.display.insert(Tk.END, msg, text_tags)
         self.master.display.config(state=Tk.DISABLED)
     # END display_msg()
+
+    def report_update_timestamp(self):
+        """If current timestamp is older than 5 minutes,
+           update to new time and print to display window.
+           Called from within display_msg()."""
+        ret = None
+        five_min_ago = datetime.datetime.now() - datetime.timedelta(minutes=5)
+        if datetime.datetime.strptime(self.timestamp, '%a, %b %d, %Y %H:%M:%S') <= five_min_ago:
+            # reset the timestamp before re-calling display_msg to avoid infinite loop
+            ret = self.timestamp
+            self.timestamp = time.strftime('%a, %b %d, %Y %H:%M:%S')
+            return ret
+    # END report_update_timestamp()
 
     def listen_on_pipe(self):
         """Poll the supplied pipe until returns True. Grab message from pipe and write to
@@ -176,8 +194,10 @@ class ChatApplication(object):
         ret = self.pipe.poll()
         if ret:
             msg = self.pipe.recv_bytes()
-            #self.display_msg('{0}: {1}'.format(CLIENT_HOST, msg))
+            #TODO: sometimes a newline after hostname?
+            self.display_msg('{0}: '.format(CLIENT_HOST), 'hostname')
             self.display_msg(msg)
+            #self.display_msg('{0}: {1}'.format(CLIENT_HOST, msg))
         self.pipe_listener_ptr = self.root.after(self.pipe_listener_delay, self.listen_on_pipe)
     # END listen_on_pipe()
 # END ChatApplication
