@@ -11,10 +11,8 @@ import socket
 import Tkinter as Tk
 import multiprocessing
 
-SERVER_HOST = '' # Symbolic name meaning all available interfaces on localhost
-SERVER_PORT = 12141 # Arbitrary non-privileged port
+PORT = 12141 # non-privileged
 CLIENT_HOST = 'ATL-L-F8YDM72'#'ATL-L-7YZMM12'
-CLIENT_PORT = 12142
 
 
 class ChatApplication(object):
@@ -210,7 +208,7 @@ class ChatSocketServer(object):
         """."""
         self.pipe = pipe
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.bind((SERVER_HOST, SERVER_PORT))
+        self.sock.bind(('', PORT)) # '': symbolic name meaning all available interfaces on localhost
         self.listen()
     # END __init__()
 
@@ -242,7 +240,7 @@ def socket_send_msg(msg=None):
     """Send a message through a socket to a host."""
     if msg:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.connect((CLIENT_HOST, CLIENT_PORT))
+        sock.connect((CLIENT_HOST, PORT))
         sock.sendall(str(msg))
         sock.close()
 # END socket_send_msg()
