@@ -3,10 +3,10 @@ Send is bound to Shift-Enter
 
 -auto size window
 -negotiate connection start between two hosts based on computer name only
--change color and side where messages come through
--add timestamp
 -tls/ssl
 """
+import time
+import datetime
 import socket
 import Tkinter as Tk
 import multiprocessing
@@ -22,13 +22,14 @@ class ChatApplication(object):
     width = 550
     height = 500
     pipe_listener_delay = 250
-    current_local_msg = ""
     def __init__(self, root, pipe):
         self.root = root
         self.root.resizable(0, 0) # not resizeable
         self.root.title("Socket Chat")
 ##        self.root.iconbitmap(default='img/AGLRSymbol.ico')
         self.pipe = pipe
+        self.current_local_msg = ""
+        self.timestamp = time.strftime('%a, %b %d, %Y %H:%M:%S')
         self.center_window() # set the window geometry to display in the center of the screen
         # create a frame encompassing the entire root widget. While all other widgets
         # could be created straight on root, this allows some further customization ability.
@@ -61,11 +62,13 @@ class ChatApplication(object):
         self.spacer(self.master, row=4, column=1, columnspan=2, height=10)
         self.master.send.grid(row=5, column=1, sticky="e")
         #####
-        # draw master last to display when all else has been drawn.
+        # draw master last to display when all else has been drawn
         self.master.grid()
         #####
-        # start listener for messages passed through pipe.
+        # start listener for messages passed through pipe
         self.pipe_listener_ptr = self.root.after(self.pipe_listener_delay, self.listen_on_pipe)
+        # on startup, write the initial timestamp
+        self.display_msg('{0}\n'.format(self.timestamp), ('timestamp',))
     # END __init__()
 
     def spacer(self, parent, **kwargs):
@@ -115,7 +118,8 @@ class ChatApplication(object):
 
     def init_display(self):
         """Create the UI objects associated witht the chat display, including text display tags."""
-        self.master.display = Tk.Text(self.master, state=Tk.DISABLED, width=65, height=17)
+        self.master.display = Tk.Text(self.master, state=Tk.DISABLED, width=65, height=17,
+                                      wrap=Tk.WORD)
         # link the Scrollbar to Text
         self.master.display_scroll = Tk.Scrollbar(self.master,
                                                   command=self.master.display.yview)
@@ -125,11 +129,13 @@ class ChatApplication(object):
         self.master.display.tag_config('local', justify=Tk.RIGHT)
                                        #background="blue", foreground="white")
         self.master.display.tag_config('error', foreground="red")
+        self.master.display.tag_config('timestamp', justify=Tk.CENTER, foreground="gray")
+        self.master.display.tag_config('hostname', foreground="blue")
     # END init_display()
 
     def init_input(self):
         """Create the UI objects associated with the chat input window."""
-        self.master.input = Tk.Text(self.master, width=65, height=10)
+        self.master.input = Tk.Text(self.master, width=65, height=10, wrap=Tk.WORD)
         # link the Scrollbar to Text
         self.master.input_scroll = Tk.Scrollbar(self.master,
                                                 command=self.master.input.yview)
@@ -144,6 +150,8 @@ class ChatApplication(object):
     def display_local_msg(self):
         """Store the characters currently in the input window. Send them to be displayed
            on the input window. Clear the input window."""
+        #self.current_local_msg = '{0}: {1}'.format(socket.gethostname(),
+        #                                           self.master.input.get(1.0, Tk.END))
         self.current_local_msg = self.master.input.get(1.0, Tk.END)
         self.display_msg(self.current_local_msg, ('local',))
         self.master.input.delete(1.0, Tk.END)
@@ -154,13 +162,32 @@ class ChatApplication(object):
 
         text_tags should be a tuple:
         ex: ('local',)"""
+        #TODO: strip hanging newlines?
         self.master.display.config(state=Tk.NORMAL)
+        report_timestamp = self.report_update_timestamp()
+        if report_timestamp is not None:
+            self.master.display.insert(Tk.END, '{0}\n'.format(report_timestamp), ('timestamp',))
+
         if text_tags is None:
             self.master.display.insert(Tk.END, msg)
         else:
             self.master.display.insert(Tk.END, msg, text_tags)
         self.master.display.config(state=Tk.DISABLED)
+        self.master.display.yview(Tk.END)
     # END display_msg()
+
+    def report_update_timestamp(self):
+        """If current timestamp is older than 5 minutes,
+           update to new time and print to display window.
+           Called from within display_msg()."""
+        ret = None
+        five_min_ago = datetime.datetime.now() - datetime.timedelta(minutes=5)
+        if datetime.datetime.strptime(self.timestamp, '%a, %b %d, %Y %H:%M:%S') <= five_min_ago:
+            # reset the timestamp before re-calling display_msg to avoid infinite loop
+            ret = self.timestamp
+            self.timestamp = time.strftime('%a, %b %d, %Y %H:%M:%S')
+            return ret
+    # END report_update_timestamp()
 
     def listen_on_pipe(self):
         """Poll the supplied pipe until returns True. Grab message from pipe and write to
@@ -169,7 +196,9 @@ class ChatApplication(object):
         ret = self.pipe.poll()
         if ret:
             msg = self.pipe.recv_bytes()
+            self.display_msg('{0}: '.format(CLIENT_HOST), 'hostname')
             self.display_msg(msg)
+            #self.display_msg('{0}: {1}'.format(CLIENT_HOST, msg))
         self.pipe_listener_ptr = self.root.after(self.pipe_listener_delay, self.listen_on_pipe)
     # END listen_on_pipe()
 # END ChatApplication
