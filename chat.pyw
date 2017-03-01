@@ -18,23 +18,21 @@ CLIENT_PORT = 12142
 
 
 class ChatApplication(object):
-    listener_delay = 250
     """Tkinter class used to build a GUI window."""
+    width = 550
+    height = 500
+    pipe_listener_delay = 250
+    current_local_msg = ""
     def __init__(self, root, pipe):
         self.root = root
-        self.width = 550
-        self.height = 500
         self.root.resizable(0, 0) # not resizeable
         self.root.title("Socket Chat")
 ##        self.root.iconbitmap(default='img/AGLRSymbol.ico')
+        self.pipe = pipe
         self.center_window() # set the window geometry to display in the center of the screen
         # create a frame encompassing the entire root widget. While all other widgets
         # could be created straight on root, this allows some further customization ability.
-        self.master = Tk.Frame(self.root,
-                               width=self.width,
-                               height=self.height)
-        #####
-        # create frames within master for task groups(if needed)
+        self.master = Tk.Frame(self.root, width=self.width, height=self.height)
         #####
         # populate display text window
         #  -self.master.display
@@ -65,9 +63,9 @@ class ChatApplication(object):
         #####
         # draw master last to display when all else has been drawn.
         self.master.grid()
-
-        self.pipe = pipe
-        self.pipe_listener = self.root.after(self.listener_delay, self.listen_pipe)
+        #####
+        # start listener for messages passed through pipe.
+        self.pipe_listener_ptr = self.root.after(self.pipe_listener_delay, self.listen_on_pipe)
     # END __init__()
 
     def spacer(self, parent, **kwargs):
@@ -110,27 +108,31 @@ class ChatApplication(object):
         x = (screen_width / 2) - (self.width / 2)
         y = (screen_height / 2) - (self.height / 2)
 
-        # set the dimensions of the screen
-        # and where it is placed
+        # set the dimensions of the window and where it is placed
         # TODO: {}.format
         self.root.geometry('%dx%d+%d+%d' % (self.width, self.height, x, y))
     # END center_window()
 
     def init_display(self):
-        """."""
+        """Create the UI objects associated witht the chat display, including text display tags."""
         self.master.display = Tk.Text(self.master, state=Tk.DISABLED, width=65, height=17)
         # link the Scrollbar to Text
         self.master.display_scroll = Tk.Scrollbar(self.master,
                                                   command=self.master.display.yview)
         self.master.display['yscrollcommand'] = self.master.display_scroll.set
+
+        # init text display tags
+        self.master.display.tag_config('local', justify=Tk.RIGHT)
+                                       #background="blue", foreground="white")
+        self.master.display.tag_config('error', foreground="red")
     # END init_display()
 
     def init_input(self):
-        """Create the UI objects associated with the chat display window."""
+        """Create the UI objects associated with the chat input window."""
         self.master.input = Tk.Text(self.master, width=65, height=10)
         # link the Scrollbar to Text
         self.master.input_scroll = Tk.Scrollbar(self.master,
-                                               command=self.master.input.yview)
+                                                command=self.master.input.yview)
         self.master.input['yscrollcommand'] = self.master.input_scroll.set
         self.master.send = Tk.Button(self.master,
                                      text='Send',
@@ -140,32 +142,41 @@ class ChatApplication(object):
     # END init_input()
 
     def display_local_msg(self):
-        """."""
-        self.msg = self.master.input.get(1.0, Tk.END)
-        self.display_msg(self.msg)
+        """Store the characters currently in the input window. Send them to be displayed
+           on the input window. Clear the input window."""
+        self.current_local_msg = self.master.input.get(1.0, Tk.END)
+        self.display_msg(self.current_local_msg, ('local',))
         self.master.input.delete(1.0, Tk.END)
     # END display_local_msg()
 
-    def display_msg(self, msg):
-        """."""
+    def display_msg(self, msg, text_tags=None):
+        """Write msg to chat display window.
+
+        text_tags should be a tuple:
+        ex: ('local',)"""
         self.master.display.config(state=Tk.NORMAL)
-        self.master.display.insert(Tk.END, msg)
+        if text_tags is None:
+            self.master.display.insert(Tk.END, msg)
+        else:
+            self.master.display.insert(Tk.END, msg, text_tags)
         self.master.display.config(state=Tk.DISABLED)
     # END display_msg()
 
-    def listen_pipe(self):
+    def listen_on_pipe(self):
+        """Poll the supplied pipe until returns True. Grab message from pipe and write to
+           display window."""
         # no timeout, return immediately, do not block
         ret = self.pipe.poll()
         if ret:
             msg = self.pipe.recv_bytes()
             self.display_msg(msg)
-        self.pipe_listener = self.root.after(self.listener_delay, self.listen_pipe)
-    # END listen_pipe()
-# END ChatApplication()
+        self.pipe_listener_ptr = self.root.after(self.pipe_listener_delay, self.listen_on_pipe)
+    # END listen_on_pipe()
+# END ChatApplication
 
 
 class ChatSocketServer(object):
-    """."""
+    """Open a socket in server mode, waiting for connections."""
     def __init__(self, pipe):
         """."""
         self.pipe = pipe
@@ -175,12 +186,16 @@ class ChatSocketServer(object):
     # END __init__()
 
     def listen(self):
+        """When a connection on the open socket is made, start serving."""
         self.sock.listen(1)
         self.serve()
     # END listen()
 
     def serve(self):
-        """."""
+        """When a connection is made on the open socket, accept and receive
+           the message, appending to a single variable for its entirety
+           (assumes data will always be str). Send the message through the pipe.
+           Start listening for new connections again."""
         msg = ""
         conn, addr = self.sock.accept()
         while True:
@@ -191,56 +206,61 @@ class ChatSocketServer(object):
         self.pipe.send_bytes(str(msg))
         self.listen()
     # END serve()
-# END ChatSocketServer()
+# END ChatSocketServer
 
 
-def socket_client(data=None):
-    """."""
-    if data:
+def socket_send_msg(msg=None):
+    """Send a message through a socket to a host."""
+    if msg:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect((CLIENT_HOST, CLIENT_PORT))
-        sock.sendall(data)
+        sock.sendall(str(msg))
         sock.close()
-# END socket_client()
-
-
-def start_socket_server(pipe):
-    """."""
-    s = ChatSocketServer(pipe)
-# END start_socket_server()
+# END socket_send_msg()
 
 
 def close_all():
-    """."""
+    """Callback bound to closing chat window. Stops separate server process and
+       destroys gui windows.
+
+    Bound to Tk.Tk() (root) 'WM_DELETE_WINDOW' protocol."""
     server_proc.terminate()
     root.destroy()
+# END close_all()
 
 
 def send_and_display_msg(*args, **kwargs):
-    """."""
-    # display to chat screen (is gui global?)
+    """Overwrite the callback for gui input Send button. Displays the local message from the
+       input window to the display window and sends the message through the socket.
+
+       Because this function involves a server process that is separate from the gui, overwriting
+       outside the gui class is better practice."""
+    # display to chat window (gui is global; defined in if __name__)
     gui.display_local_msg()
     # send to socket. If no server on other end, notify unavailable.
     try:
-        socket_client(gui.msg)
+        socket_send_msg(gui.current_local_msg)
     except socket.error:
-        gui.display_msg('[user is unavailable]\n')
+        gui.display_msg('[user is unavailable]\n', ('error',))
 # END send_and_display_msg()
 
 
 if __name__ == '__main__':
     # False: client can only receive, server can only send
     client_pipe, server_pipe = multiprocessing.Pipe(False)
-    server_proc = multiprocessing.Process(target=start_socket_server, args=(server_pipe,))
+    server_proc = multiprocessing.Process(target=ChatSocketServer, args=(server_pipe,))
     server_proc.start()
-    
+
     # create the gui, re-configure the send button callback to both
     #  send on the socket and display locally.
     root = Tk.Tk()
     gui = ChatApplication(root, client_pipe)
     gui.master.send.configure(command=send_and_display_msg)
     # binds
+    # redirect closing chat window to callback
     root.protocol("WM_DELETE_WINDOW", close_all)
-    gui.master.input.bind("<Return>", send_and_display_msg)
+    # bind Shift+Enter to the input window to send.
+    #TODO: shift-return still adds a newline after the message is sent.
+    gui.master.input.bind("<Shift-Return>", send_and_display_msg)
     # mainloop() blocks script until Tk is completed or closed (destroyed)
     root.mainloop()
