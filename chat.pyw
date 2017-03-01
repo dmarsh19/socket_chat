@@ -162,16 +162,18 @@ class ChatApplication(object):
 
         text_tags should be a tuple:
         ex: ('local',)"""
+        #TODO: strip hanging newlines?
         self.master.display.config(state=Tk.NORMAL)
         report_timestamp = self.report_update_timestamp()
         if report_timestamp is not None:
-            self.display_msg('{0}\n'.format(report_timestamp), ('timestamp',))
+            self.master.display.insert(Tk.END, '{0}\n'.format(report_timestamp), ('timestamp',))
 
         if text_tags is None:
             self.master.display.insert(Tk.END, msg)
         else:
             self.master.display.insert(Tk.END, msg, text_tags)
         self.master.display.config(state=Tk.DISABLED)
+        self.master.display.yview(Tk.END)
     # END display_msg()
 
     def report_update_timestamp(self):
@@ -194,7 +196,6 @@ class ChatApplication(object):
         ret = self.pipe.poll()
         if ret:
             msg = self.pipe.recv_bytes()
-            #TODO: sometimes a newline after hostname?
             self.display_msg('{0}: '.format(CLIENT_HOST), 'hostname')
             self.display_msg(msg)
             #self.display_msg('{0}: {1}'.format(CLIENT_HOST, msg))
