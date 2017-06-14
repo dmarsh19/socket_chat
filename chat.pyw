@@ -20,27 +20,6 @@ PORT = 12141 # non-privileged
 CLIENT_HOST = 'ATL-L-7YZMM12'#'ATL-L-F8YDM72'
 
 
-# class CustomText(tk.Text):
-#     """tk.Text() width and height in pixels
-#     The solution consists in putting the Text widget inside a frame,
-#     forcing the frame to a fixed size by deactivating size propagation and
-#     configuring the Text widget to expand and fill both directions (to stick to the frame borders).
-#     http://code.activestate.com/recipes/578887-text-widget-width-and-height-in-pixels-tkinter/"""
-#     def __init__(self, parent, width=0, height=0, **kwargs):
-#         self.outer_frame = tk.Frame(parent, width=width, height=height)
-#         tk.Text.__init__(self, self.outer_frame, **kwargs)
-#         self.pack(expand=tk.YES, fill=tk.BOTH)
-#         # __grid = self.grid
-#         # self.__grid(sticky="we")
-#     # END __init__()
-
-#     def grid(self, *args, **kwargs):
-#         self.outer_frame.grid(*args, **kwargs)
-#         self.outer_frame.grid_propagate(False)
-#     # END grid()
-# # END CustomText
-
-
 class ChatApplication(object):
     """Tkinter class used to build a GUI window."""
     width = 550
@@ -63,11 +42,17 @@ class ChatApplication(object):
         #  -self.master.display
         #  -self.master.display_scroll
         self.init_display()
+        # text display tags - format how the texdt appears based on what generated the text
+        self.master.display.tag_config('local', justify=tk.RIGHT)
+        self.master.display.tag_config('error', foreground="red")
+        self.master.display.tag_config('timestamp', justify=tk.CENTER, foreground="gray")
+        self.master.display.tag_config('hostname', foreground="blue")
         # populate input text window and button
         #  -self.master.input
         #  -self.master.input_scroll
-        #  -self.master.send
         self.init_input()
+        self.master.send = tk.Button(self.master, text='Send', width=15, height=1,
+                                     command=self.display_local_msg)
         #####
         # draw everything to screen
         # display
@@ -76,12 +61,12 @@ class ChatApplication(object):
         self.spacer(self.master, row=0, column=3, rowspan=5, width=5)
         # top padding
         self.spacer(self.master, row=0, column=1, columnspan=2, height=5)
-        self.master.display.grid(sticky="we")
+        self.master.display.grid(sticky="we") # row=1, column=1 in init_display()
         self.master.display_scroll.grid(row=1, column=2, sticky="ns")
         # middle spacer
         self.spacer(self.master, row=2, column=1, columnspan=2, height=10)
         # input
-        self.master.input.grid(sticky="we")
+        self.master.input.grid(sticky="we") # row=3, column=1 in init_input()
         self.master.input_scroll.grid(row=3, column=2, sticky="ns")
         self.spacer(self.master, row=4, column=1, columnspan=2, height=10)
         self.master.send.grid(row=5, column=1, sticky="e")
@@ -115,49 +100,32 @@ class ChatApplication(object):
         rowspan = kwargs.pop("rowspan", 1)
         backgroundcolor = kwargs.pop("backgroundcolor", "")
         relief = kwargs.pop("relief", tk.FLAT)
-        spacer = tk.Frame(parent,
-                          width=width,
-                          height=height,
-                          background=backgroundcolor,
-                          relief=relief)
-        spacer.grid(row=row, column=column,
-                    columnspan=columnspan,
-                    rowspan=rowspan)
+        spacer = tk.Frame(parent, width=width, height=height,
+                          background=backgroundcolor, relief=relief)
+        spacer.grid(row=row, column=column, columnspan=columnspan, rowspan=rowspan)
     # END spacer()
 
     def center_window(self):
         """Center the root window on the screen."""
-        # get screen width and height
-        screen_width = self.root.winfo_screenwidth()
-        screen_height = self.root.winfo_screenheight()
-
-        # calculate x,y for Tk() window
-        x = (screen_width / 2) - (self.width / 2)
-        y = (screen_height / 2) - (self.height / 2)
-
+        # get screen width and height and calculate x,y for Tk() window
+        x = (self.root.winfo_screenwidth() / 2) - (self.width / 2)
+        y = (self.root.winfo_screenheight() / 2) - (self.height / 2)
         # set the dimensions of the window and where it is placed
         # TODO: {}.format
         self.root.geometry('%dx%d+%d+%d' % (self.width, self.height, x, y))
     # END center_window()
 
     def init_display(self):
-        """Create the UI objects associated witht the chat display, including text display tags."""
+        """Create the UI objects associated witht the chat display."""
+        # create an outer Frame() object to control the Text() size based on pixels, not by font
         outer_frame = tk.Frame(self.master, width=520, height=270)
         outer_frame.grid(row=1, column=1)
         outer_frame.columnconfigure(0, weight=10)
         outer_frame.grid_propagate(False)
         self.master.display = tk.Text(outer_frame, state=tk.DISABLED, wrap=tk.WORD)
         # link the Scrollbar to Text
-        self.master.display_scroll = tk.Scrollbar(self.master,
-                                                  command=self.master.display.yview)
+        self.master.display_scroll = tk.Scrollbar(self.master, command=self.master.display.yview)
         self.master.display['yscrollcommand'] = self.master.display_scroll.set
-
-        # init text display tags
-        self.master.display.tag_config('local', justify=tk.RIGHT)
-                                       #background="blue", foreground="white")
-        self.master.display.tag_config('error', foreground="red")
-        self.master.display.tag_config('timestamp', justify=tk.CENTER, foreground="gray")
-        self.master.display.tag_config('hostname', foreground="blue")
     # END init_display()
 
     def init_input(self):
@@ -168,21 +136,13 @@ class ChatApplication(object):
         outer_frame.grid_propagate(False)
         self.master.input = tk.Text(outer_frame, wrap=tk.WORD)
         # link the Scrollbar to Text
-        self.master.input_scroll = tk.Scrollbar(self.master,
-                                                command=self.master.input.yview)
+        self.master.input_scroll = tk.Scrollbar(self.master, command=self.master.input.yview)
         self.master.input['yscrollcommand'] = self.master.input_scroll.set
-        self.master.send = tk.Button(self.master,
-                                     text='Send',
-                                     width=15,
-                                     height=1,
-                                     command=self.display_local_msg)
     # END init_input()
 
     def display_local_msg(self):
         """Store the characters currently in the input window. Send them to be displayed
            on the input window. Clear the input window."""
-        #self.current_local_msg = '{0}: {1}'.format(socket.gethostname(),
-        #                                           self.master.input.get(1.0, tk.END))
         self.current_local_msg = self.master.input.get(1.0, tk.END)
         self.display_msg(self.current_local_msg, ('local',))
         self.master.input.delete(1.0, tk.END)
@@ -247,7 +207,7 @@ class ChatSocketServer(object):
 
     def listen(self):
         """When a connection on the open socket is made, start serving."""
-        self.sock.listen(1)
+        self.sock.listen(10)
         self.serve()
     # END listen()
 
