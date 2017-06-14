@@ -17,7 +17,28 @@ except ImportError:
 
 
 PORT = 12141 # non-privileged
-CLIENT_HOST = 'ATL-L-F8YDM72'#'ATL-L-7YZMM12'
+CLIENT_HOST = 'ATL-L-7YZMM12'#'ATL-L-F8YDM72'
+
+
+# class CustomText(tk.Text):
+#     """tk.Text() width and height in pixels
+#     The solution consists in putting the Text widget inside a frame,
+#     forcing the frame to a fixed size by deactivating size propagation and
+#     configuring the Text widget to expand and fill both directions (to stick to the frame borders).
+#     http://code.activestate.com/recipes/578887-text-widget-width-and-height-in-pixels-tkinter/"""
+#     def __init__(self, parent, width=0, height=0, **kwargs):
+#         self.outer_frame = tk.Frame(parent, width=width, height=height)
+#         tk.Text.__init__(self, self.outer_frame, **kwargs)
+#         self.pack(expand=tk.YES, fill=tk.BOTH)
+#         # __grid = self.grid
+#         # self.__grid(sticky="we")
+#     # END __init__()
+
+#     def grid(self, *args, **kwargs):
+#         self.outer_frame.grid(*args, **kwargs)
+#         self.outer_frame.grid_propagate(False)
+#     # END grid()
+# # END CustomText
 
 
 class ChatApplication(object):
@@ -25,14 +46,14 @@ class ChatApplication(object):
     width = 550
     height = 500
     pipe_listener_delay = 250
+    timestamp_fmt = '%a, %b %d, %Y %H:%M:%S'
     def __init__(self, root, pipe):
         self.root = root
         self.root.resizable(0, 0) # not resizeable
         self.root.title("Socket Chat")
-##        self.root.iconbitmap(default='img/AGLRSymbol.ico')
         self.pipe = pipe
         self.current_local_msg = ""
-        self.timestamp = time.strftime('%a, %b %d, %Y %H:%M:%S')
+        self.timestamp = time.strftime(self.timestamp_fmt)
         self.center_window() # set the window geometry to display in the center of the screen
         # create a frame encompassing the entire root widget. While all other widgets
         # could be created straight on root, this allows some further customization ability.
@@ -55,12 +76,12 @@ class ChatApplication(object):
         self.spacer(self.master, row=0, column=3, rowspan=5, width=5)
         # top padding
         self.spacer(self.master, row=0, column=1, columnspan=2, height=5)
-        self.master.display.grid(row=1, column=1)
+        self.master.display.grid(sticky="we")
         self.master.display_scroll.grid(row=1, column=2, sticky="ns")
         # middle spacer
         self.spacer(self.master, row=2, column=1, columnspan=2, height=10)
         # input
-        self.master.input.grid(row=3, column=1)
+        self.master.input.grid(sticky="we")
         self.master.input_scroll.grid(row=3, column=2, sticky="ns")
         self.spacer(self.master, row=4, column=1, columnspan=2, height=10)
         self.master.send.grid(row=5, column=1, sticky="e")
@@ -110,7 +131,7 @@ class ChatApplication(object):
         screen_width = self.root.winfo_screenwidth()
         screen_height = self.root.winfo_screenheight()
 
-        # calculate x,y for tk window
+        # calculate x,y for Tk() window
         x = (screen_width / 2) - (self.width / 2)
         y = (screen_height / 2) - (self.height / 2)
 
@@ -121,8 +142,11 @@ class ChatApplication(object):
 
     def init_display(self):
         """Create the UI objects associated witht the chat display, including text display tags."""
-        self.master.display = tk.Text(self.master, state=tk.DISABLED, width=65, height=17,
-                                      wrap=tk.WORD)
+        outer_frame = tk.Frame(self.master, width=520, height=270)
+        outer_frame.grid(row=1, column=1)
+        outer_frame.columnconfigure(0, weight=10)
+        outer_frame.grid_propagate(False)
+        self.master.display = tk.Text(outer_frame, state=tk.DISABLED, wrap=tk.WORD)
         # link the Scrollbar to Text
         self.master.display_scroll = tk.Scrollbar(self.master,
                                                   command=self.master.display.yview)
@@ -138,7 +162,11 @@ class ChatApplication(object):
 
     def init_input(self):
         """Create the UI objects associated with the chat input window."""
-        self.master.input = tk.Text(self.master, width=65, height=10, wrap=tk.WORD)
+        outer_frame = tk.Frame(self.master, width=520, height=160)
+        outer_frame.grid(row=3, column=1)
+        outer_frame.columnconfigure(0, weight=10)
+        outer_frame.grid_propagate(False)
+        self.master.input = tk.Text(outer_frame, wrap=tk.WORD)
         # link the Scrollbar to Text
         self.master.input_scroll = tk.Scrollbar(self.master,
                                                 command=self.master.input.yview)
@@ -185,10 +213,10 @@ class ChatApplication(object):
            Called from within display_msg()."""
         ret = None
         five_min_ago = datetime.datetime.now() - datetime.timedelta(minutes=5)
-        if datetime.datetime.strptime(self.timestamp, '%a, %b %d, %Y %H:%M:%S') <= five_min_ago:
+        if datetime.datetime.strptime(self.timestamp, self.timestamp_fmt) <= five_min_ago:
             # reset the timestamp before re-calling display_msg to avoid infinite loop
             ret = self.timestamp
-            self.timestamp = time.strftime('%a, %b %d, %Y %H:%M:%S')
+            self.timestamp = time.strftime(self.timestamp_fmt)
             return ret
     # END report_update_timestamp()
 
@@ -209,11 +237,11 @@ class ChatApplication(object):
 
 class ChatSocketServer(object):
     """Open a socket in server mode, waiting for connections."""
-    def __init__(self, pipe):
+    def __init__(self, ip, port, pipe):
         """."""
         self.pipe = pipe
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.bind(('', PORT)) # '': symbolic name meaning all available interfaces on localhost
+        self.sock.bind((ip, port)) # '': symbolic name meaning all available interfaces on localhost
         self.listen()
     # END __init__()
 
@@ -241,11 +269,11 @@ class ChatSocketServer(object):
 # END ChatSocketServer
 
 
-def socket_send_msg(msg=None):
+def socket_send_msg(host, port, msg=None):
     """Send a message through a socket to a host."""
     if msg:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.connect((CLIENT_HOST, PORT))
+        sock.connect((host, port))
         sock.sendall(str(msg))
         sock.close()
 # END socket_send_msg()
@@ -271,7 +299,7 @@ def send_and_display_msg(*args, **kwargs):
     gui.display_local_msg()
     # send to socket. If no server on other end, notify unavailable.
     try:
-        socket_send_msg(gui.current_local_msg)
+        socket_send_msg(CLIENT_HOST, PORT, gui.current_local_msg)
     except socket.error:
         gui.display_msg('[user is unavailable]\n', ('error',))
 # END send_and_display_msg()
@@ -280,7 +308,7 @@ def send_and_display_msg(*args, **kwargs):
 if __name__ == '__main__':
     # False: client can only receive, server can only send
     client_pipe, server_pipe = multiprocessing.Pipe(False)
-    server_proc = multiprocessing.Process(target=ChatSocketServer, args=(server_pipe,))
+    server_proc = multiprocessing.Process(target=ChatSocketServer, args=('', PORT, server_pipe))
     server_proc.start()
 
     # create the gui, re-configure the send button callback to both
