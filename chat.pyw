@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 Send is bound to Shift-Enter
 
@@ -8,8 +9,12 @@ Send is bound to Shift-Enter
 import time
 import datetime
 import socket
-import Tkinter as Tk
 import multiprocessing
+try:
+    import tkinter as tk
+except ImportError:
+    import Tkinter as tk
+
 
 PORT = 12141 # non-privileged
 CLIENT_HOST = 'ATL-L-F8YDM72'#'ATL-L-7YZMM12'
@@ -31,7 +36,7 @@ class ChatApplication(object):
         self.center_window() # set the window geometry to display in the center of the screen
         # create a frame encompassing the entire root widget. While all other widgets
         # could be created straight on root, this allows some further customization ability.
-        self.master = Tk.Frame(self.root, width=self.width, height=self.height)
+        self.master = tk.Frame(self.root, width=self.width, height=self.height)
         #####
         # populate display text window
         #  -self.master.display
@@ -88,8 +93,8 @@ class ChatApplication(object):
         columnspan = kwargs.pop("columnspan", 1)
         rowspan = kwargs.pop("rowspan", 1)
         backgroundcolor = kwargs.pop("backgroundcolor", "")
-        relief = kwargs.pop("relief", Tk.FLAT)
-        spacer = Tk.Frame(parent,
+        relief = kwargs.pop("relief", tk.FLAT)
+        spacer = tk.Frame(parent,
                           width=width,
                           height=height,
                           background=backgroundcolor,
@@ -105,7 +110,7 @@ class ChatApplication(object):
         screen_width = self.root.winfo_screenwidth()
         screen_height = self.root.winfo_screenheight()
 
-        # calculate x,y for Tk window
+        # calculate x,y for tk window
         x = (screen_width / 2) - (self.width / 2)
         y = (screen_height / 2) - (self.height / 2)
 
@@ -116,29 +121,29 @@ class ChatApplication(object):
 
     def init_display(self):
         """Create the UI objects associated witht the chat display, including text display tags."""
-        self.master.display = Tk.Text(self.master, state=Tk.DISABLED, width=65, height=17,
-                                      wrap=Tk.WORD)
+        self.master.display = tk.Text(self.master, state=tk.DISABLED, width=65, height=17,
+                                      wrap=tk.WORD)
         # link the Scrollbar to Text
-        self.master.display_scroll = Tk.Scrollbar(self.master,
+        self.master.display_scroll = tk.Scrollbar(self.master,
                                                   command=self.master.display.yview)
         self.master.display['yscrollcommand'] = self.master.display_scroll.set
 
         # init text display tags
-        self.master.display.tag_config('local', justify=Tk.RIGHT)
+        self.master.display.tag_config('local', justify=tk.RIGHT)
                                        #background="blue", foreground="white")
         self.master.display.tag_config('error', foreground="red")
-        self.master.display.tag_config('timestamp', justify=Tk.CENTER, foreground="gray")
+        self.master.display.tag_config('timestamp', justify=tk.CENTER, foreground="gray")
         self.master.display.tag_config('hostname', foreground="blue")
     # END init_display()
 
     def init_input(self):
         """Create the UI objects associated with the chat input window."""
-        self.master.input = Tk.Text(self.master, width=65, height=10, wrap=Tk.WORD)
+        self.master.input = tk.Text(self.master, width=65, height=10, wrap=tk.WORD)
         # link the Scrollbar to Text
-        self.master.input_scroll = Tk.Scrollbar(self.master,
+        self.master.input_scroll = tk.Scrollbar(self.master,
                                                 command=self.master.input.yview)
         self.master.input['yscrollcommand'] = self.master.input_scroll.set
-        self.master.send = Tk.Button(self.master,
+        self.master.send = tk.Button(self.master,
                                      text='Send',
                                      width=15,
                                      height=1,
@@ -149,10 +154,10 @@ class ChatApplication(object):
         """Store the characters currently in the input window. Send them to be displayed
            on the input window. Clear the input window."""
         #self.current_local_msg = '{0}: {1}'.format(socket.gethostname(),
-        #                                           self.master.input.get(1.0, Tk.END))
-        self.current_local_msg = self.master.input.get(1.0, Tk.END)
+        #                                           self.master.input.get(1.0, tk.END))
+        self.current_local_msg = self.master.input.get(1.0, tk.END)
         self.display_msg(self.current_local_msg, ('local',))
-        self.master.input.delete(1.0, Tk.END)
+        self.master.input.delete(1.0, tk.END)
     # END display_local_msg()
 
     def display_msg(self, msg, text_tags=None):
@@ -161,17 +166,17 @@ class ChatApplication(object):
         text_tags should be a tuple:
         ex: ('local',)"""
         #TODO: strip hanging newlines?
-        self.master.display.config(state=Tk.NORMAL)
+        self.master.display.config(state=tk.NORMAL)
         report_timestamp = self.report_update_timestamp()
         if report_timestamp is not None:
-            self.master.display.insert(Tk.END, '{0}\n'.format(report_timestamp), ('timestamp',))
+            self.master.display.insert(tk.END, '{0}\n'.format(report_timestamp), ('timestamp',))
 
         if text_tags is None:
-            self.master.display.insert(Tk.END, msg)
+            self.master.display.insert(tk.END, msg)
         else:
-            self.master.display.insert(Tk.END, msg, text_tags)
-        self.master.display.config(state=Tk.DISABLED)
-        self.master.display.yview(Tk.END)
+            self.master.display.insert(tk.END, msg, text_tags)
+        self.master.display.config(state=tk.DISABLED)
+        self.master.display.yview(tk.END)
     # END display_msg()
 
     def report_update_timestamp(self):
@@ -250,7 +255,7 @@ def close_all():
     """Callback bound to closing chat window. Stops separate server process and
        destroys gui windows.
 
-    Bound to Tk.Tk() (root) 'WM_DELETE_WINDOW' protocol."""
+    Bound to tk.Tk() (root) 'WM_DELETE_WINDOW' protocol."""
     server_proc.terminate()
     root.destroy()
 # END close_all()
@@ -280,7 +285,7 @@ if __name__ == '__main__':
 
     # create the gui, re-configure the send button callback to both
     #  send on the socket and display locally.
-    root = Tk.Tk()
+    root = tk.Tk()
     gui = ChatApplication(root, client_pipe)
     gui.master.send.configure(command=send_and_display_msg)
     # binds
@@ -289,5 +294,5 @@ if __name__ == '__main__':
     # bind Shift+Enter to the input window to send.
     #TODO: shift-return still adds a newline after the message is sent.
     gui.master.input.bind("<Shift-Return>", send_and_display_msg)
-    # mainloop() blocks script until Tk is completed or closed (destroyed)
+    # mainloop() blocks script until Tk() is completed or closed (destroyed)
     root.mainloop()
