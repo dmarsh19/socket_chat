@@ -10,6 +10,10 @@ import socket
 import threading
 import ttk
 try:
+    import SocketServer as socketserver
+except ImportError:
+    import socketserver
+try:
     import tkinter as tk
 except ImportError:
     import Tkinter as tk
@@ -44,10 +48,10 @@ class ChatMain(tk.Frame):
         tk.Frame.__init__(self, *args, **kwargs)
         self.pack(expand=tk.YES, fill=tk.BOTH)
 
-        self.server = threading.Thread(target=ChatSocketServer,
-                                       args=(self.address, self.port, self.queue))
-        self.server.daemon = True
-        self.server.start()
+        self.server = ChatSocketServer((self.address, self.port, self.queue), ChatRequestHandler)
+        self.server_thread = threading.Thread(target=self.server.serve_forever)
+        self.server_thread.daemon = True
+        self.server_thread.start()
 
         self.master.title(self.title)
         # set frame resize priorities
@@ -192,35 +196,22 @@ class ChatWindow(tk.Toplevel):
 # END ChatWindow
 
 
-class ChatSocketServer(object):
-    """Open a socket in server mode, waiting for connections."""
-    def __init__(self, address, port, queue):
-        """."""
-        self.queue = queue
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.bind((address, port))
-        self.listen()
-    # END __init__()
+class ChatSocketServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+    pass
 
-    def listen(self):
-        """When a connection on the open socket is made, start serving."""
-        self.sock.listen(10) # # of backlogged connections before refusing new connections
-        self.serve()
-    # END listen()
-
-    def serve(self):
+class ChatRequestHandler(socketserver.BaseRequestHandler):
+    def handle(self):
         """When a connection is made on the open socket, accept and receive
            the message, appending to a single variable for its entirety
            (assumes data will always be str). Put tuple(addr, message) on the queue.
            Start listening for new connections again."""
         msg = ""
-        conn, addr = self.sock.accept()
         while True:
-            data = conn.recv(1024)
+            data = self.request.recv(1024)
             if not data:
                 break
             msg = msg + data
-        self.queue.put_nowait((addr, str(msg)))
+        self.queue.put_nowait((self.client_address, str(msg)))
         self.listen()
     # END serve()
 # END ChatSocketServer
