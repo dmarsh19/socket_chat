@@ -27,7 +27,7 @@ class ChatRequestHandler(BaseRequestHandler):
            Start listening for new connections again."""
         msg = ""
         while True:
-            data = self.request.recv(1024)
+            data = self.request.recv(1024).decode()
             if not data:
                 break
             msg = msg + data
@@ -41,7 +41,7 @@ def socket_send_msg(address, port, msg=None):
     if msg:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect((address, port))
-        sock.sendall(str(msg))
+        sock.sendall(str(msg).encode())
         sock.close()
 # END socket_send_msg()
 

@@ -5,13 +5,16 @@ import os
 import time
 import datetime
 import socket
-import ttk
+try:
+    import ttk
+except ImportError:
+    from tkinter import ttk
 try:
     import tkinter as tk
 except ImportError:
     import Tkinter as tk
 try:
-    import tkfiledialog
+    from tkinter import filedialog as tkfiledialog
 except ImportError:
     import tkFileDialog as tkfiledialog
 try:
@@ -19,8 +22,8 @@ try:
 except ImportError:
     import queue
 
-from connections import xml_iter_by_tag, fetch_conn_val_by_iid
-from servers import socket_send_msg
+from socket_chat.connections import xml_iter_by_tag, fetch_conn_val_by_iid
+from socket_chat.servers import socket_send_msg
 
 
 class AutoScrollbar(tk.Scrollbar):
@@ -112,7 +115,9 @@ class ChatMain(tk.Frame):
         for child in self.tree.get_children():
             self.tree.delete(child)
         # load new data to tree
-        map(self._populate_connections, xml_iter_by_tag(self.connection_file, 'connection'))
+        #map(self._populate_connections, xml_iter_by_tag(self.connection_file, 'connection'))
+        for i in xml_iter_by_tag(self.connection_file, 'connection'):
+            self._populate_connections(i)
         # bind the callback on every obj that has the #entry tag
         self.tree.tag_bind('#entry', '<<TreeviewSelect>>', self._click_connection)
     # END _load_connection_file()
