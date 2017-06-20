@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<socketchat>
+    <connection id="fdcedd81-f031-47f9-87e4-2a0ecc9902e7">
+        <displayname>ATL-L-F8YDM72</displayname>
+        <hostname>ATL-L-F8YDM72</hostname>
+        <address>10.254.40.228</address>
+    </connection>
+    <connection id="07fcd164-8266-441e-b585-f5c43de63e1e">
+        <displayname>localhost</displayname>
+        <hostname>localhost</hostname>
+        <address>127.0.0.1</address>
+    </connection>
+    <connection id="5538f542-2174-4913-811b-8fd0d59abbe1">
+        <displayname>ATL-L-7YZMM12</displayname>
+        <hostname>ATL-L-7YZMM12</hostname>
+        <address>10.254.12.88</address>
+    </connection>
+</socketchat>
