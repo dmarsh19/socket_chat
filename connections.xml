@@ -5,4 +5,14 @@
         <hostname>ATL-L-F8YDM72</hostname>
         <address>10.254.40.228</address>
     </connection>
+    <connection id="07fcd164-8266-441e-b585-f5c43de63e1e">
+        <displayname>Test1</displayname>
+        <hostname>Test1</hostname>
+        <address>127.0.0.1</address>
+    </connection>
+    <connection id="5538f542-2174-4913-811b-8fd0d59abbe1">
+        <displayname>Test2</displayname>
+        <hostname>Test2</hostname>
+        <address>127.0.0.1</address>
+    </connection>
 </socketchat>

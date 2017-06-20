@@ -7,7 +7,7 @@ import xml.etree.ElementTree as et
 
 
 def fetch_xmlfile_root(xmlfile_path):
-    """."""
+    """Return the root (top level Element) of an xml file. If failed, return None."""
     root = None
     if xmlfile_path and os.path.isfile(xmlfile_path):
         try:
@@ -20,7 +20,20 @@ def fetch_xmlfile_root(xmlfile_path):
 
 
 def xml_iter_by_tag(xmlfile_path, tag):
-    """Return an iterator of all elements in the xml file of a specified tag."""
+    """Return an iterator of all elements in the xml file of a specified tag.
+
+    Ex:
+    <garage>
+        <car>
+            <model>Honda</model>
+        </car>
+        <car>
+            <model>Toyota</model>
+        </car>
+    </garage>
+
+    xml_iter_by_tag('garage.xml', 'car') => iter(<Element(car)>, <Element(car)>)
+    """
     root = fetch_xmlfile_root(xmlfile_path)
     if root:
         return root.iter(tag)
