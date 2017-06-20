@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
--tls/ssl
 """
 import os
 import time
 import datetime
+import socket
 import ttk
 try:
     import tkinter as tk
@@ -19,7 +19,8 @@ try:
 except ImportError:
     import queue
 
-from connections import *
+from connections import xml_iter_by_tag, fetch_conn_val_by_iid
+from servers import socket_send_msg
 
 
 class AutoScrollbar(tk.Scrollbar):
@@ -34,13 +35,27 @@ class AutoScrollbar(tk.Scrollbar):
     # END set()
 # END AutoScrollbar
 
+def _spacer(parent, **kwargs):
+    """A convenience function to simplify creating spacers on UI objects.
+
+    Required arguments: - parent widget
+    Optional: - width, height, row, column, columnspan, rowspan, backgroundcolor, relief
+    """
+    row = kwargs.pop("row", 0)
+    column = kwargs.pop("column", 0)
+    columnspan = kwargs.pop("columnspan", 1)
+    rowspan = kwargs.pop("rowspan", 1)
+    spacer = tk.Frame(parent, kwargs)
+    spacer.grid(row=row, column=column, columnspan=columnspan, rowspan=rowspan)
+# END _spacer()
+
 
 class ChatMain(tk.Frame):
     """."""
     title = 'Socket Chat'
-    queue_listener_delay = 250
+    queue_listener_delay = 250 # ms
     def __init__(self, connection_file='', msg_queue=None, *args, **kwargs):
-        tk.Frame.__init__(self, *args, **kwargs)
+        tk.Frame.__init__(self, name='chatmain', *args, **kwargs)
         self.pack(expand=tk.YES, fill=tk.BOTH)
 
         self.master.title(self.title)
@@ -62,14 +77,12 @@ class ChatMain(tk.Frame):
         if connection_file:
             self._load_connection_file(connection_file)
 
-        if msg_queue and isinstance(msg_queue, queue.Queue()):
-            self.queue = msg_queue
+        if msg_queue:
+            self.poll_queue(msg_queue)
 
         self.master.config(menu=self.menu)
         self.tree.grid(row=0, column=0, sticky="nsew")
         self.ysb.grid(row=0, column=1, sticky="ns")
-        # start listener for messages placed on queue
-        self.queue_listener_ptr = self.master.after(self.queue_listener_delay, self._poll_queue)
     # END __init__()
 
     def load_connection_file(self):
@@ -77,57 +90,75 @@ class ChatMain(tk.Frame):
         Passes the file to _load_connection_file() to perform the logic of loading/refreshing the
         connections."""
         connection_file = tkfiledialog.askopenfilename(parent=self, title='Select Connection File',
-                                                       defaultextension='.xml',
+                                                       filetypes=(("All types", "*.*"),
+                                                                  ("eXtensible Markup Language file", "*.xml")),
                                                        initialdir=os.path.abspath('.'))
         self._load_connection_file(connection_file)
     # END load_connection_file()
 
     def _load_connection_file(self, connection_file=''):
         """Called during __init__ and load_connection_file()."""
-        #TODO: kill any existing ChatWindow. No longer guaranteed a ref to their connection info
-        if connection_file != '':
-            self.connection_file = connection_file
+        if connection_file == '':
+            return
+        self.connection_file = connection_file
+        self.connections_by_address = {}
+        self.connections_by_iid = {}
+        # kill existing ChatWindow(s). No longer guaranteed a reference to their connection info.
+        # get a set of the widget names. trying to destroy() while looping fails.
+        for name in set(self.master.children):
+            if name != 'chatmain':
+                self.master.children[name].destroy()
         # drop existing values in the tree if any
-        if self.tree.get_children():
-            [self.tree.delete(child) for child in self.tree.get_children()]
+        for child in self.tree.get_children():
+            self.tree.delete(child)
         # load new data to tree
-        map(self._populate_tree, parse_connection_file(self.connection_file, 'connection'))
+        map(self._populate_connections, xml_iter_by_tag(self.connection_file, 'connection'))
         # bind the callback on every obj that has the #entry tag
         self.tree.tag_bind('#entry', '<<TreeviewSelect>>', self._click_connection)
-        #TODO: store all connections in python object lookup table (performance)
     # END _load_connection_file()
 
-    def _populate_tree(self, conn):
-        """Add data to the tree. Called from _load_connection_file()."""
-        self.tree.insert('', 'end', iid=conn[0], values=conn[1], tags='#entry')
-    # END _populate_tree()
+    def _populate_connections(self, conn_elem):
+        """Add connections to ui tree. Create two lookup dicts to map address to iid and vice versa.
+        Called from _load_connection_file()."""
+        self.tree.insert('', 'end', iid=conn_elem.get('id'),
+                         values=conn_elem.find('displayname').text, tags='#entry')
+        # store all connections in python object lookup table (performance)
+        #TODO: better python data structure to store xml
+        self.connections_by_address[conn_elem.find('address').text] = conn_elem.get('id')
+        self.connections_by_iid[conn_elem.get('id')] = conn_elem.find('address').text
+    # END _populate_connections()
 
     def _click_connection(self, *args, **kwargs):
         """callback on click of row in tree."""
         iid = self.tree.focus()
-        #print(iid)
-        address = fetch_conn_val_by_iid(self.connection_file, iid, 'address')
-        hostname = fetch_conn_val_by_iid(self.connection_file, iid, 'hostname')
-        #print(socket.gethostbyaddr(address))
-        #print(socket.gethostbyname_ex(hostname))
-
         if iid in self.master.children:
             # set focus to existing window
             self.master.children[iid].deiconify()
             self.master.children[iid].focus_set()
         else:
-            ChatWindow(iid, hostname)
+            #TODO: better python data structure to store xml and get rid of this
+            hostname = fetch_conn_val_by_iid(self.connection_file, iid, 'hostname')
+            address = fetch_conn_val_by_iid(self.connection_file, iid, 'address')
+            ChatWindow(iid, hostname, address)
     # END _click_connection()
+
+    def poll_queue(self, msg_queue):
+        """Callable function to hook t oa queue and begin polling."""
+        if msg_queue and isinstance(msg_queue, queue.Queue):
+            self.msg_queue = msg_queue
+        # start listener for messages placed on queue
+        self.queue_listener_ptr = self.master.after(self.queue_listener_delay, self._poll_queue)
+    # END poll_queue()
 
     def _poll_queue(self):
         """Poll a queue until returns True. Pass message from queue to corresponding ChatWindow."""
-        if hasattr(self, 'queue'):
-            while not self.queue.empty():
-                addr, msg = self.queue.get_nowait()
-                #TODO: use lookup table to map addr to iid and push msg along
-            # self.display_msg('{0}: '.format(CLIENT_HOST), 'hostname')
-            # self.display_msg(msg)
-            # #self.display_msg('{0}: {1}'.format(CLIENT_HOST, msg))
+        while not self.msg_queue.empty():
+            addr, msg = self.msg_queue.get_nowait()
+            self.master.children[self.connections_by_address[addr]].display_msg(msg)
+            #TODO: prefix display name in ChatWindow()
+        # self.display_msg('{0}: '.format(CLIENT_HOST), 'hostname')
+        # self.display_msg(msg)
+        # #self.display_msg('{0}: {1}'.format(CLIENT_HOST, msg))
         self.queue_listener_ptr = self.master.after(self.queue_listener_delay, self._poll_queue)
     # END _poll_queue()
 # END ChatMain
@@ -136,10 +167,11 @@ class ChatMain(tk.Frame):
 class ChatWindow(tk.Toplevel):
     """Tkinter class used to build a GUI window."""
     timestamp_fmt = '%a, %b %d, %Y %H:%M:%S'
-    def __init__(self, iid, hostname, *args, **kwargs):
+    def __init__(self, iid, hostname, address, *args, **kwargs):
         tk.Toplevel.__init__(self, name=iid, *args, **kwargs)
         self.iid = iid
         self.hostname = hostname
+        self.address = address
         self.title(self.hostname)
         self.resizable(0, 0) # not resizeable
         self.current_local_msg = ""
@@ -154,7 +186,7 @@ class ChatWindow(tk.Toplevel):
         self.input_sb = AutoScrollbar(self, command=self.input.yview)
         self.input['yscrollcommand'] = self.input_sb.set
         self.send = tk.Button(self, text='Send', width=15, height=1,
-                              command=self._display_local_msg)
+                              command=self.send_and_display_msg)
         #####
         # text display tags - format how the text appears based on what generated the text
         self.display.tag_config('local', justify=tk.RIGHT)
@@ -165,47 +197,33 @@ class ChatWindow(tk.Toplevel):
         # draw everything to screen
         # display
         # left and right padding
-        self._spacer(self, row=0, column=0, rowspan=5, width=5)
-        self._spacer(self, row=0, column=3, rowspan=5, width=5)
+        _spacer(self, row=0, column=0, rowspan=5, width=5)
+        _spacer(self, row=0, column=3, rowspan=5, width=5)
         # top padding
-        self._spacer(self, row=0, column=1, columnspan=2, height=5)
+        _spacer(self, row=0, column=1, columnspan=2, height=5)
         self.display.grid(row=1, column=1)
         self.display_sb.grid(row=1, column=2, sticky="ns")
         # middle spacer
-        self._spacer(self, row=2, column=1, columnspan=2, height=10)
+        _spacer(self, row=2, column=1, columnspan=2, height=10)
         # input
         self.input.grid(row=3, column=1)
         self.input_sb.grid(row=3, column=2, sticky="ns")
-        self._spacer(self, row=4, column=1, columnspan=2, height=10)
+        _spacer(self, row=4, column=1, columnspan=2, height=10)
         self.send.grid(row=5, column=1, sticky="e")
-        self._spacer(self, row=6, column=1, columnspan=2, height=10)
+        _spacer(self, row=6, column=1, columnspan=2, height=10)
         # on startup, write the initial timestamp
-        self._display_msg('{0}\n'.format(self.timestamp), ('timestamp',))
+        self.display_msg('{0}\n'.format(self.timestamp), ('timestamp',))
     # END __init__()
-
-    def _spacer(self, parent, **kwargs):
-        """A convenience function to simplify creating spacers on UI objects.
-
-           Required arguments: - parent widget
-           Optional: - width, height, row, column, columnspan, rowspan, backgroundcolor, relief
-           """
-        row = kwargs.pop("row", 0)
-        column = kwargs.pop("column", 0)
-        columnspan = kwargs.pop("columnspan", 1)
-        rowspan = kwargs.pop("rowspan", 1)
-        spacer = tk.Frame(parent, kwargs)
-        spacer.grid(row=row, column=column, columnspan=columnspan, rowspan=rowspan)
-    # END _spacer()
 
     def _display_local_msg(self):
         """Store the characters currently in the input window. Send them to be displayed
            on the input window. Clear the input window."""
         self.current_local_msg = self.input.get(1.0, tk.END)
-        self._display_msg(self.current_local_msg, ('local',))
+        self.display_msg(self.current_local_msg, ('local',))
         self.input.delete(1.0, tk.END)
     # END _display_local_msg()
 
-    def _display_msg(self, msg, text_tags=None):
+    def display_msg(self, msg, text_tags=None):
         """Write msg to chat display window.
 
         text_tags should be a tuple:
@@ -222,17 +240,29 @@ class ChatWindow(tk.Toplevel):
             self.display.insert(tk.END, msg, text_tags)
         self.display.config(state=tk.DISABLED)
         self.display.yview(tk.END)
-    # END _display_msg()
+    # END display_msg()
+
+    def send_and_display_msg(self, *args, **kwargs):
+        """Displays the local message from the input window to the display window and
+        sends the message through a socket."""
+        self._display_local_msg()
+        # send to socket. If no server on other end, notify unavailable.
+        try:
+            #TODO: hardcoded port
+            socket_send_msg(self.address, 12141, self.current_local_msg)
+        except socket.error:
+            self.display_msg('[user is unavailable]\n', ('error',))
+# END send_and_display_msg()
 
     def _report_update_timestamp(self):
         """If current timestamp is older than 5 minutes,
            update to new time and print to display window.
-           Called from within _display_msg()."""
+           Called from within display_msg()."""
         ret = None
         five_min_ago = datetime.datetime.now() - datetime.timedelta(minutes=5)
         if datetime.datetime.strptime(self.timestamp, self.timestamp_fmt) <= five_min_ago:
-            ret = self.timestamp
             self.timestamp = time.strftime(self.timestamp_fmt)
+            ret = self.timestamp
         return ret
     # END _report_update_timestamp()
 # END ChatWindow

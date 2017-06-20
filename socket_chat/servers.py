@@ -36,6 +36,16 @@ class ChatRequestHandler(BaseRequestHandler):
 # END ChatRequestHandler
 
 
+def socket_send_msg(address, port, msg=None):
+    """Send a message through a socket to a host."""
+    if msg:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.connect((address, port))
+        sock.sendall(str(msg))
+        sock.close()
+# END socket_send_msg()
+
+
 if __name__ == '__main__':
     address = '127.0.0.1'
     port = 12141 # non-privileged
@@ -50,9 +60,6 @@ if __name__ == '__main__':
     request_server_thread.start()
 
     # test message to queue
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.connect((address, port))
-    sock.sendall('Test')
-    sock.close()
+    socket_send_msg(address, port, 'Test')
 
     print(request_server.queue.get())

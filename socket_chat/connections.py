@@ -1,5 +1,4 @@
 """
-.
 """
 import os
 import uuid
@@ -32,25 +31,12 @@ def xml_iter_by_tag(xmlfile_path, tag):
         </car>
     </garage>
 
-    xml_iter_by_tag('garage.xml', 'car') => iter(<Element(car)>, <Element(car)>)
+    xml_iter_by_tag('garage.xml', 'car') => iter((<Element(car)>, <Element(car)>))
     """
     root = fetch_xmlfile_root(xmlfile_path)
     if root:
         return root.iter(tag)
 # END xml_iter_by_tag()
-
-
-def parse_connection_file(xmlfile_path, tag):
-    """."""
-    # [(connection.id, connection.displayname), (connection.id, connection.displayname), ...]
-    return map(_parse_connection_elem, xml_iter_by_tag(xmlfile_path, tag))
-# END parse_connections_xml()
-
-
-def _parse_connection_elem(conn_elem):
-    """From a 'connection' xml element, return a tuple(connection.id, connection.displayname)"""
-    return (conn_elem.get('id'), conn_elem.find('displayname').text)
-# END _parse_connection_elem()
 
 
 def add_connection():
