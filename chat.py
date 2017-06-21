@@ -36,6 +36,7 @@ def main():
     #TODO: bad xml path gives unhelpful error - ui.py, line 101, _load_connection_file()
     # map(self._populate_connections, xml_iter_by_tag(self.connection_file, 'connection'))
     # TypeError: argument 2 to map() must support iteration
+    #ChatMain().mainloop()
     ChatMain(os.path.abspath("connections.xml"), msg_queue=msg_queue).mainloop()
 # END main()
 
