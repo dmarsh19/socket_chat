@@ -5,6 +5,7 @@ import os
 import time
 import datetime
 import socket
+import uuid
 try:
     import ttk
 except ImportError:
@@ -171,7 +172,20 @@ class ChatMain(tk.Frame):
         """Poll a queue until returns True. Pass message from queue to corresponding ChatWindow."""
         while not self.msg_queue.empty():
             addr, msg = self.msg_queue.get_nowait()
-            self.master.children[self.connections_by_address[addr]].display_msg(msg)
+            try:
+                iid = self.connections_by_address[addr]
+            except KeyError:
+                iid = None
+            if iid in self.master.children:
+                self.master.children[iid].display_msg(msg)
+            else:
+                # window is not yet open.
+                #TODO: This doesn't link back to the xml and assumes the connection is brand new
+                # and has never been established. No conneciton entry in xml.
+                iid = str(uuid.uuid4())
+                hostname = socket.getfqdn(addr).split('.')[0]
+                ChatWindow(iid, hostname, addr)
+                self.master.children[iid].display_msg(msg)
             #TODO: prefix display name in ChatWindow()
         # self.display_msg('{0}: '.format(CLIENT_HOST), 'hostname')
         # self.display_msg(msg)
