@@ -269,7 +269,6 @@ class NewConnection(tk.Toplevel):
         # grab focus
         self.focus_force()
         # create the UI objects
-        #self.style = ttk.Style()
         ttk.Label(self, text="hostname").grid()
         ttk.Entry(self, textvariable=self.hostname, width=25).grid(row=0, column=1)
         ttk.Label(self, text="displayname").grid()
@@ -277,14 +276,10 @@ class NewConnection(tk.Toplevel):
         ttk.Label(self, text="address").grid()
         ttk.Entry(self, textvariable=self.address, width=25).grid(row=2, column=1)
         button_frame = ttk.Frame(self) # additional frame to center buttons
-        #self.style.configure('lookup.TButton')
-        self.lookup_button = ttk.Button(button_frame, text="address lookup",
-                                        style='lookup.TButton', width=13,
+        self.lookup_button = ttk.Button(button_frame, text="address lookup", width=13,
                                         command=lambda: self.address.set(socket.gethostbyname(self.hostname.get())))
         self.lookup_button.state(['disabled'])
-        #self.style.configure('add.TButton')
-        self.add_button = ttk.Button(button_frame, text="Add", width=10,
-                                     style='add.TButton', command=self._add)
+        self.add_button = ttk.Button(button_frame, text="Add", width=10, command=self._add)
         self.add_button.state(['disabled'])
         self.lookup_button.grid()
         self.add_button.grid(row=0, column=1)
@@ -297,15 +292,12 @@ class NewConnection(tk.Toplevel):
         """check if the fields are populated before buttons are active."""
         if self.hostname.get():
             self.lookup_button.state(['!disabled'])
-            #self.lookup_button.config(state=tk.NORMAL)
         else:
             self.lookup_button.state(['disabled'])
-            #self.lookup_button.config(state=tk.DISABLED)
         if self.hostname.get() and self.displayname.get() and self.address.get():
             # bind Enter to Add button
             self.bind('<Return>', self._add)
             self.add_button.state(['!disabled'])
-            #self.add_button.config(state=tk.NORMAL)
         self.after(self.listener_delay, self._listener)
     # END _listener()
 
