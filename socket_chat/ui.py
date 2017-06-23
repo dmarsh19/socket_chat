@@ -116,8 +116,7 @@ class ChatMain(ttk.Frame):
         self.tree.insert('', 'end', iid=conn_elem.get('id'),
                          #TODO: whitespace delimited. Tries to populate multiple columns
                          # look into text option for Treeview.insert()
-                         values="'{}'".format(conn_elem.find('displayname').text),
-                         tags='#entry')
+                         values=conn_elem.find('displayname').text, tags='#entry')
         # store all connections in python object lookup table (performance)
         #TODO: better python data structure to store xml
         self.connections_by_address[conn_elem.find('address').text] = conn_elem.get('id')
