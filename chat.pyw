@@ -81,7 +81,7 @@ class ChatMain(ttk.Frame):
         if not config_file_path:
             filetypes = (("All types", "*.*"), ("eXtensible Markup Language file", "*.xml"))
             config_file_path = tkfiledialog.askopenfilename(parent=self, filetypes=filetypes,
-                                                            title='Select Connection File',
+                                                            title='Load Configuration',
                                                             defaultextension=".xml",
                                                             initialdir=os.path.abspath('.'))
         # if user cancels selecting a file, config_file_path still empty.
@@ -93,25 +93,27 @@ class ChatMain(ttk.Frame):
                     self.config = tree
                     self.config_file_path = config_file_path
                 else: # invalid xml, don't write on close
-                    self.config = default_config()
+                    self.config = ElementTree(Element('socketchat'))
+                    create_elem_with_subs(self.config.getroot(), 'request_server',
+                                          grandchild_elem_dict={'address': "", 'port': "12141"})
             except (IOError, ParseError): # parse(non-existent file)
-                self.config = default_config()
+                self.config = ElementTree(Element('socketchat'))
+                create_elem_with_subs(self.config.getroot(), 'request_server',
+                                      grandchild_elem_dict={'address': "", 'port': "12141"})
                 self.config_file_path = config_file_path
 
             # kill existing ChatWindow(s). No longer guaranteed reference to their connection info.
             # use set of widget names, do not destroy using name directly from iter.
-            for iid in set(self.master.children):
-                if iid != 'chatmain':
-                    if iid not in [c.get('id') for c in self.config.iter('connection')]:
-                        self.master.children[iid].destroy()
+            for iid in [k for k in self.master.children]:
+                if iid != 'chatmain' and iid not in [c.get('id') for c in self.config.iter('connection')]:
+                    self.master.children[iid].destroy()
+            #TODO: map() calls work in 2.7, not in 3
             # drop existing values in the tree if any
-            for child in self.tree.get_children():
-                self.tree.delete(child)
+            [self.tree.delete(child) for child in self.tree.get_children()]
+            #map(self.tree.delete, self.tree.get_children())
             # load new data to tree
-            #TODO: this map() call works in 2.7, not in 3
+            [self.populate_connection(conn_elem) for conn_elem in self.config.iter('connection')]
             #map(self.populate_connection, self.config.iter('connection'))
-            for conn_elem in self.config.iter('connection'):
-                self.populate_connection(conn_elem)
     # END load_config()
 
     def populate_connection(self, conn_elem):
@@ -122,7 +124,7 @@ class ChatMain(ttk.Frame):
         self.tree.tag_bind('#entry', '<<TreeviewSelect>>', self._click_connection)
     # END populate_connection()
 
-    def _click_connection(self, event):
+    def _click_connection(self, *args, **kwargs):
         """callback on click of row in tree."""
         iid = self.tree.focus()
         if iid in self.master.children:
@@ -130,37 +132,39 @@ class ChatMain(ttk.Frame):
             self.master.children[iid].deiconify()
             self.master.children[iid].focus_set()
         else:
-            for conn_elem in self.config.iter('connection'):
-                if conn_elem.get('id') == iid:
-                    displayname = conn_elem.findtext('displayname')
-                    address = conn_elem.findtext('address')
-                    ChatWindow(iid, displayname, address, self.port)
-                    break
+            conn_elem = self.config.find(".//connection[@id='{}']".format(iid))
+            if conn_elem is not None: # FutureWarning
+                displayname = conn_elem.findtext('displayname')
+                address = conn_elem.findtext('address')
+                ChatWindow(iid, displayname, address, self.port)
     # END _click_connection()
 
     def _poll_queue(self):
         """Poll a queue.Queue() until returns True. Pass message from queue to
-        corresponding ChatWindow. If no matching window, see if connection in config xml. If so,
-        grab displayname. If no, spawn a new ChatWindow with new iid."""
+        ChatWindow based on addr.
+
+        First, try to match address to iid from existing connection in config xml.
+        Then, see if ChatWindow with matching iid is already open.
+          If not, re-check config xml to fetch displayname.
+          If not, in config xml, spawn a new ChatWindow with new iid and hostname as displayname."""
         while not self.msg_queue.empty():
-            iid = None
             addr, msg = self.msg_queue.get_nowait()
-            for conn_elem in self.config.iter('connection'):
-                if conn_elem.findtext('address') == addr:
-                    iid = conn_elem.get('id')
-                    break
+            # map address to iid in config xml
+            conn_elem = self.config.find(".//connection[address='{}']".format(addr))
+            if conn_elem is not None:
+                iid = conn_elem.get('id')
+            else:
+                iid = None
+            # need to spawn a new ChatWindow
             if iid not in self.master.children:
-                in_xml = False
-                for conn_elem in self.config.iter('connection'):
-                    if conn_elem.get('id') == iid:
-                        displayname = conn_elem.findtext('displayname')
-                        in_xml = True
-                        break
-                if not in_xml:
+                conn_elem = self.config.find(".//connection[@id='{}']".format(iid))
+                if conn_elem is not None:
+                    displayname = conn_elem.findtext('displayname')
+                else:
                     iid = str(uuid4())
                     displayname = socket.getfqdn(addr).split('.')[0]
                 ChatWindow(iid, displayname, addr, self.port)
-            self.master.children[iid].display_msg('{}:'.format(self.master.children[iid].displayname), 'displayname')
+            self.master.children[iid].display_msg('{}:'.format(self.master.children[iid].displayname), ('displayname',))
             self.master.children[iid].display_msg(msg)
         self.queue_listener_ptr = self.after(self.queue_listener_delay, self._poll_queue)
     # END _poll_queue()
@@ -182,16 +186,17 @@ class ChatWindow(tk.Toplevel):
         # ttk.Frame gets the default OS colors correct on MacOS
         background_frame = ttk.Frame(self)
         background_frame.grid()
+        self.displayname = displayname
         self.address = address
         self.port = port
-        self.title(displayname)
+        self.title(self.displayname)
         self.resizable(0, 0) # not resizeable
         self.focus_force()
         self.current_local_msg = ""
         self.timestamp = time.strftime(self.timestamp_fmt)
         # populate widgets
-        self.display = scrolledtext.ScrolledText(background_frame, height=18, state=tk.DISABLED,
-                                                 wrap=tk.WORD)
+        self.display = scrolledtext.ScrolledText(background_frame, height=18,
+                                                 state=tk.DISABLED, wrap=tk.WORD)
         self.input = scrolledtext.ScrolledText(background_frame, height=10, wrap=tk.WORD)
         self.send = ttk.Button(background_frame, text='Send', width=15,
                                command=self.send_and_display_msg)
@@ -240,7 +245,7 @@ class ChatWindow(tk.Toplevel):
         self.display.yview(tk.END)
     # END display_msg()
 
-    def send_and_display_msg(self, event):
+    def send_and_display_msg(self, *args, **kwargs):
         """Displays the local message from the input window to the display window and
         sends the message through a socket."""
         if self._fetch_local_msg():
@@ -314,20 +319,15 @@ class NewConnection(tk.Toplevel):
 
     def _add(self, *args, **kwargs):
         """callback for Add button."""
-        # parse the xml to see if a connection with same hostname and address already exists
-        for conn_elem in self.config.iter('connection'):
-            if (conn_elem.find('address').text == self.address.get() and
-                    conn_elem.find('hostname').text == self.hostname.get().upper()):
-                self.destroy() #TODO: notify user of existing connection
-                return
-        sub_elem_vals = {'hostname': self.hostname.get().upper(),
-                         'displayname': self.displayname.get(),
-                         'address': self.address.get()}
-        conn_elem = SubElement(self.config.getroot(), 'connection', {'id': str(uuid4())})
-        for sub in sub_elem_vals:
-            sub_elem = SubElement(conn_elem, sub)
-            sub_elem.text = sub_elem_vals[sub]
-        self.master.children['chatmain'].populate_connection(conn_elem)
+        # parse the xml to see if a connection with same address already exists
+        conn_elem = self.config.find(".//connection[address='{}']".format(self.address.get()))
+        if conn_elem is None: #TODO: notify user of existing connection
+            new_conn_elem = create_elem_with_subs(self.config.getroot(), 'connection',
+                                                  {'id': str(uuid4())},
+                                                  {'hostname': self.hostname.get().upper(),
+                                                   'displayname': self.displayname.get(),
+                                                   'address': self.address.get()})
+            self.master.children['chatmain'].populate_connection(new_conn_elem)
         self.destroy()
     # END _add()
 # END NewConnection
@@ -365,16 +365,15 @@ def socket_send_msg(address, port, msg=None):
 # END socket_send_msg()
 
 
-def default_config():
-    """Write a new, default configuration xml Element in memory."""
-    tree = ElementTree(Element('socketchat'))
-    app_elem = SubElement(tree.getroot(), 'request_server')
-    app_elem_vals = {'address': "", 'port': "12141"}
-    for sub in app_elem_vals:
-        sub_elem = SubElement(app_elem, sub)
-        sub_elem.text = app_elem_vals[sub]
-    return tree
-# END default_config()
+def create_elem_with_subs(parent_elem, child_tag, attrib_dict={}, grandchild_elem_dict={}):
+    """Extends the functionality of Element or SubElement to also create additional sub elements
+    from a dictionary."""
+    child_elem = SubElement(parent_elem, child_tag, attrib_dict)
+    for k, v in grandchild_elem_dict.items():
+        grandchild_elem = SubElement(child_elem, k)
+        grandchild_elem.text = v
+    return child_elem
+# END create_elem_with_subs()
 
 
 if __name__ == '__main__':
