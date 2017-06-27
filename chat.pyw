@@ -1,11 +1,7 @@
 #!/usr/bin/env python3
 """
-Port should be the same on all machines running SocketChat.
-
--tls/ssl
--tests
--menu for ChatWindow to add connection if not in config
--NewConnection user message if conneciton already exists
+-menu on ChatWindow. Add connection if not in config
+-NewConnection user message if connection already exists
 -load_config populate_connection map() in Python3
 """
 import os
@@ -44,6 +40,8 @@ class ChatMain(ttk.Frame):
         self.grid() # The Frame fills tk.master. Following widgets are built within Frame.
         self.master.resizable(0, 0) # not resizeable
         self.master.title('Socket Chat')
+        # grab focus
+        self.focus_force()
         self.menu = tk.Menu(self)
         self.filemenu = tk.Menu(self.menu, tearoff=0)
         self.menu.add_cascade(menu=self.filemenu, label='File')
@@ -181,18 +179,22 @@ class ChatWindow(tk.Toplevel):
     timestamp_fmt = '%a, %b %d, %Y %H:%M:%S'
     def __init__(self, iid, displayname, address, port, *args, **kwargs):
         tk.Toplevel.__init__(self, name=iid, *args, **kwargs)
-        self.iid = iid
-        self.displayname = displayname
+        # ttk.Frame gets the default OS colors correct on MacOS
+        background_frame = ttk.Frame(self)
+        background_frame.grid()
         self.address = address
         self.port = port
-        self.title(self.displayname)
+        self.title(displayname)
         self.resizable(0, 0) # not resizeable
+        self.focus_force()
         self.current_local_msg = ""
         self.timestamp = time.strftime(self.timestamp_fmt)
         # populate widgets
-        self.display = scrolledtext.ScrolledText(self, height=18, state=tk.DISABLED, wrap=tk.WORD)
-        self.input = scrolledtext.ScrolledText(self, height=10, wrap=tk.WORD)
-        self.send = ttk.Button(self, text='Send', width=15, command=self.send_and_display_msg)
+        self.display = scrolledtext.ScrolledText(background_frame, height=18, state=tk.DISABLED,
+                                                 wrap=tk.WORD)
+        self.input = scrolledtext.ScrolledText(background_frame, height=10, wrap=tk.WORD)
+        self.send = ttk.Button(background_frame, text='Send', width=15,
+                               command=self.send_and_display_msg)
         # text display tags - format how the text appears based on what generated the text
         self.display.tag_config('local', justify=tk.RIGHT)
         self.display.tag_config('error', foreground="red")
@@ -265,22 +267,23 @@ class NewConnection(tk.Toplevel):
     listener_delay = 250 # ms
     def __init__(self, config_xml_tree, *args, **kwargs):
         tk.Toplevel.__init__(self, name='newconnection', *args, **kwargs)
+        background_frame = ttk.Frame(self)
+        background_frame.grid()
         self.title('Add Connection')
         self.resizable(0, 0) # not resizeable
         self.config = config_xml_tree
         self.hostname = tk.StringVar()
         self.displayname = tk.StringVar()
         self.address = tk.StringVar()
-        # grab focus
         self.focus_force()
         # create the UI objects
-        ttk.Label(self, text="hostname").grid()
-        ttk.Entry(self, textvariable=self.hostname, width=25).grid(row=0, column=1)
-        ttk.Label(self, text="displayname").grid()
-        ttk.Entry(self, textvariable=self.displayname, width=25).grid(row=1, column=1)
-        ttk.Label(self, text="address").grid()
-        ttk.Entry(self, textvariable=self.address, width=25).grid(row=2, column=1)
-        button_frame = ttk.Frame(self) # additional frame to center buttons
+        ttk.Label(background_frame, text="hostname").grid()
+        ttk.Entry(background_frame, textvariable=self.hostname, width=25).grid(row=0, column=1)
+        ttk.Label(background_frame, text="displayname").grid()
+        ttk.Entry(background_frame, textvariable=self.displayname, width=25).grid(row=1, column=1)
+        ttk.Label(background_frame, text="address").grid()
+        ttk.Entry(background_frame, textvariable=self.address, width=25).grid(row=2, column=1)
+        button_frame = ttk.Frame(background_frame) # additional frame to center buttons
         self.lookup_button = ttk.Button(button_frame, text="address lookup", width=13,
                                         command=lambda: self.address.set(socket.gethostbyname(self.hostname.get())))
         self.lookup_button.state(['disabled'])
@@ -311,7 +314,7 @@ class NewConnection(tk.Toplevel):
 
     def _add(self, *args, **kwargs):
         """callback for Add button."""
-        # parse the xml to see if a connection with same hostname and/or address already exists
+        # parse the xml to see if a connection with same hostname and address already exists
         for conn_elem in self.config.iter('connection'):
             if (conn_elem.find('address').text == self.address.get() and
                     conn_elem.find('hostname').text == self.hostname.get().upper()):
