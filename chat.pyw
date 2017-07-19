@@ -195,9 +195,9 @@ class ChatWindow(tk.Toplevel):
         self.current_local_msg = ""
         self.timestamp = time.strftime(self.timestamp_fmt)
         # populate widgets
-        self.display = scrolledtext.ScrolledText(background_frame, height=18,
+        self.display = scrolledtext.ScrolledText(background_frame, height=18, borderwidth=2, relief=tk.SUNKEN,
                                                  state=tk.DISABLED, wrap=tk.WORD)
-        self.input = scrolledtext.ScrolledText(background_frame, height=10, wrap=tk.WORD)
+        self.input = scrolledtext.ScrolledText(background_frame, height=10, wrap=tk.WORD, borderwidth=2, relief=tk.SUNKEN)
         self.send = ttk.Button(background_frame, text='Send', width=15,
                                command=self.send_and_display_msg)
         # text display tags - format how the text appears based on what generated the text
@@ -211,9 +211,9 @@ class ChatWindow(tk.Toplevel):
         self.send.grid(sticky="e")
         # on startup, write the initial timestamp
         self.display_msg(self.timestamp, ('timestamp',))
-        # bind Enter to Send button and ALT-Enter to place newline
+        # bind Enter to Send button and Shift-Enter to place newline
         self.bind('<Return>', self.send_and_display_msg)
-        self.bind('<Alt-Return>', lambda e: "break")
+        self.bind('<Shift-Return>', lambda e: "break")
     # END __init__()
 
     def _fetch_local_msg(self):
