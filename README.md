@@ -1,7 +1,7 @@
 ## Socket Chat
 #### A portable, lightweight LAN Messenger
 
-A Python script that can be copied to as many machines as needed and allow basic chat functionality between machines.
+A Python script that can be copied to as many machines as needed and allow basic chat functionality between machines.  
 Built using Python builtin modules only *(see Requirements section for tkinter issues on MacOS)*
 
 **Compatible on:**
@@ -19,8 +19,8 @@ If attempting to run using Python2, Linux/Uinx will require updating the first l
 
 #### Getting Started
 
-Clone or download this repository. The entire application is the single file **chat.pyw**
-If click to run is available (Windows), double-click the script to start.
-Otherwise (Unix/Linux), **chat.pyw** can be initialized from a terminal:
-`cd` to directory containing **chat.pyw**
+Clone or download this repository. The entire application is the single file **chat.pyw**  
+If click to run is available (Windows), double-click the script to start.  
+Otherwise (Unix/Linux), **chat.pyw** can be initialized from a terminal:  
+`cd` to directory containing **chat.pyw**  
 `./chat.pyw`

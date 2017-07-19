@@ -2,7 +2,6 @@
 """
 -menu on ChatWindow. Add connection if not in config
 -NewConnection user message if connection already exists
--load_config populate_connection map() in Python3
 """
 import os
 import time
@@ -102,18 +101,17 @@ class ChatMain(ttk.Frame):
                                       grandchild_elem_dict={'address': "", 'port': "12141"})
                 self.config_file_path = config_file_path
 
-            # kill existing ChatWindow(s). No longer guaranteed reference to their connection info.
-            # use set of widget names, do not destroy using name directly from iter.
-            for iid in [k for k in self.master.children]:
-                if iid != 'chatmain' and iid not in [c.get('id') for c in self.config.iter('connection')]:
+            # kill existing ChatWindow(s) if connections not in new config.
+            # No longer guaranteed reference to their connection info.
+            # use list of widget names, do not destroy directly from iter.
+            for iid in [i for i in self.master.children]:
+                if iid != 'chatmain' and iid not in [j.get('id') for j in self.config.iter('connection')]:
                     self.master.children[iid].destroy()
-            #TODO: map() calls work in 2.7, not in 3
             # drop existing values in the tree if any
-            [self.tree.delete(child) for child in self.tree.get_children()]
-            #map(self.tree.delete, self.tree.get_children())
+            # * - splat operator; i.e. 'unpacking argument lists'
+            self.tree.delete(*self.tree.get_children())
             # load new data to tree
-            [self.populate_connection(conn_elem) for conn_elem in self.config.iter('connection')]
-            #map(self.populate_connection, self.config.iter('connection'))
+            [self.populate_connection(i) for i in self.config.iter('connection')]
     # END load_config()
 
     def populate_connection(self, conn_elem):
