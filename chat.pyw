@@ -287,7 +287,7 @@ class NewConnection(tk.Toplevel):
         ttk.Label(background_frame, text="address").grid()
         ttk.Entry(background_frame, textvariable=self.address, width=25).grid(row=2, column=1)
         button_frame = ttk.Frame(background_frame) # additional frame to center buttons
-        self.lookup_button = ttk.Button(button_frame, text="address lookup", width=13,
+        self.lookup_button = ttk.Button(button_frame, text="address lookup", width=15,
                                         command=lambda: self.address.set(socket.gethostbyname(self.hostname.get())))
         self.lookup_button.state(['disabled'])
         self.add_button = ttk.Button(button_frame, text="Add", width=10, command=self._add)
