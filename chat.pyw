@@ -35,12 +35,10 @@ class ChatMain(ttk.Frame):
     queue_listener_delay = 250 # ms
     def __init__(self, config_file_path="socketchat.xml", *args, **kwargs):
         ttk.Frame.__init__(self, name='chatmain', *args, **kwargs)
-        # build ui
         self.grid() # The Frame fills tk.master. Following widgets are built within Frame.
         self.master.resizable(0, 0) # not resizeable
         self.master.title('Socket Chat')
-        # grab focus
-        self.focus_force()
+        self.focus_force() # grab focus
         self.menu = tk.Menu(self)
         self.filemenu = tk.Menu(self.menu, tearoff=0)
         self.menu.add_cascade(menu=self.filemenu, label='File')
@@ -63,7 +61,7 @@ class ChatMain(ttk.Frame):
         request_server_thread.daemon = True
         request_server.daemon_threads = True
         request_server_thread.start()
-        # add menu commands after config is loaded
+        # add menu commands after self.config exists
         self.filemenu.add_command(label='Load Configuration', command=self.load_config)
         self.filemenu.add_command(label='Add Connection', command=lambda: NewConnection(self.config))
         # start listener for messages placed on queue
@@ -131,7 +129,7 @@ class ChatMain(ttk.Frame):
             self.master.children[iid].focus_set()
         else:
             conn_elem = self.config.find(".//connection[@id='{}']".format(iid))
-            if conn_elem is not None: # FutureWarning
+            if conn_elem is not None:
                 displayname = conn_elem.findtext('displayname')
                 address = conn_elem.findtext('address')
                 ChatWindow(iid, displayname, address, self.port)
@@ -141,36 +139,43 @@ class ChatMain(ttk.Frame):
         """Poll a queue.Queue() until returns True. Pass message from queue to
         ChatWindow based on addr.
 
-        First, try to match address to iid from existing connection in config xml.
-        Then, see if ChatWindow with matching iid is already open.
-          If not, re-check config xml to fetch displayname.
-          If not, in config xml, spawn a new ChatWindow with new iid and hostname as displayname."""
+        1. Try to retrieve connection id from config using addr.
+            a. if not found, assign addr as id
+        2. Check if ChatWindow with matching id is already open.
+            a. if not open, use id to retrieve displayname from config.
+                i. if no match in config, socket call for displayname.
+            b. Spawn new ChatWindow."""
         while not self.msg_queue.empty():
             addr, msg = self.msg_queue.get_nowait()
-            # map address to iid in config xml
+            # Try to retrieve connection id from config using addr
             conn_elem = self.config.find(".//connection[address='{}']".format(addr))
             if conn_elem is not None:
                 iid = conn_elem.get('id')
-            else:
-                iid = None
-            # need to spawn a new ChatWindow
-            if iid not in self.master.children:
+            else: # id not found, assign addr as id
+                # tkinter uses 'dot' naming convention to signify ancestry of widgets.
+                # thus, we can't leave the addr in the standard format.
+                iid = addr.replace('.', '-')
+            # Check if ChatWindow with matching id is already open
+            try:
+                chat_window = self.master.children[iid]
+            except KeyError: # window not open, use id to retrieve displayname from config
                 conn_elem = self.config.find(".//connection[@id='{}']".format(iid))
                 if conn_elem is not None:
                     displayname = conn_elem.findtext('displayname')
-                else:
-                    iid = str(uuid4())
+                else: # no match in config, socket call for displayname
                     displayname = socket.getfqdn(addr).split('.')[0]
-                ChatWindow(iid, displayname, addr, self.port)
-            self.master.children[iid].display_msg('{}:'.format(self.master.children[iid].displayname), ('displayname',))
-            self.master.children[iid].display_msg(msg)
+                # Spawn new ChatWindow
+                chat_window = ChatWindow(iid, displayname, addr, self.port)
+            chat_window.display_msg('{}:'.format(chat_window.displayname), ('displayname',))
+            chat_window.display_msg(msg)
         self.queue_listener_ptr = self.after(self.queue_listener_delay, self._poll_queue)
     # END _poll_queue()
 
     def close(self):
-        """Callback on window close to write config to file."""
+        """Callback on window close to write config to file if there are connections."""
         if hasattr(self, 'config_file_path'):
-            self.config.write(self.config_file_path, "UTF-8", True)
+            if self.config.findall('connection'):
+                self.config.write(self.config_file_path, "UTF-8", True)
         self.master.destroy()
     # END close()
 # END ChatMain
