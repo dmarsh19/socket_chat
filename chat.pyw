@@ -198,9 +198,10 @@ class ChatWindow(tk.Toplevel):
         self.current_local_msg = ""
         self.timestamp = time.strftime(self.timestamp_fmt)
         # populate widgets
-        self.display = scrolledtext.ScrolledText(background_frame, height=18, borderwidth=2, relief=tk.SUNKEN,
-                                                 state=tk.DISABLED, wrap=tk.WORD)
-        self.input = scrolledtext.ScrolledText(background_frame, height=10, wrap=tk.WORD, borderwidth=2, relief=tk.SUNKEN)
+        self.display = scrolledtext.ScrolledText(background_frame, height=18, borderwidth=2,
+                                                 relief=tk.SUNKEN, state=tk.DISABLED, wrap=tk.WORD)
+        self.input = scrolledtext.ScrolledText(background_frame, height=10, wrap=tk.WORD,
+                                               borderwidth=2, relief=tk.SUNKEN)
         self.send = ttk.Button(background_frame, text='Send', width=15,
                                command=self.send_and_display_msg)
         # text display tags - format how the text appears based on what generated the text
