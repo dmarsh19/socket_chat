@@ -12,9 +12,10 @@ Built using Python builtin modules only *(see Requirements section for tkinter i
 **Requirements:**
 * Python - Python3 Recommended. Python2 is supported *(see below for instructions for Unix/Linux)*
 * tkinter - [IDLE and tkinter with Tcl/Tk on macOS](https://www.python.org/download/mac/tcltk/)
+* IPv4 (IPv6 not supported)
 
 **In a Unix or Linux/GNU environment, the script tries to run with Python3**
-If attempting to run using Python2, Linux/Uinx will require updating the first line from `#!/usr/bin/env python3` to `#!/usr/bin/env python`
+If attempting to run using Python2, Linux/Unix will require updating the first line from `#!/usr/bin/env python3` to `#!/usr/bin/env python`
 
 
 #### Getting Started

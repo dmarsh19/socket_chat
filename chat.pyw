@@ -9,8 +9,12 @@ import datetime
 import socket
 from uuid import uuid4
 from threading import Thread
-from xml.etree.ElementTree import ElementTree, Element, SubElement, parse, iselement, ParseError
-try:
+# performance using cElementTree in Python2 is worth the extra try:except
+try: #python2
+    from xml.etree import cElementTree as ET
+except ImportError:
+    from xml.etree import ElementTree as ET
+try: # python3
     from queue import Queue
     from socketserver import ThreadingTCPServer, BaseRequestHandler
     import tkinter as tk
@@ -39,22 +43,23 @@ class ChatMain(ttk.Frame):
         self.master.resizable(0, 0) # not resizeable
         self.master.title('Socket Chat')
         self.focus_force() # grab focus
-        self.menu = tk.Menu(self)
-        self.filemenu = tk.Menu(self.menu, tearoff=0)
-        self.menu.add_cascade(menu=self.filemenu, label='File')
+        # create gui widgets
+        menubar = tk.Menu(self)
+        filemenu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(menu=filemenu, label='File')
+        self.master.config(menu=menubar)
         self.tree = ttk.Treeview(self, show='tree', selectmode='browse')
-        self.ysb = ttk.Scrollbar(self, command=self.tree.yview)
-        self.tree['yscroll'] = self.ysb.set
-        self.master.config(menu=self.menu)
+        ysb = ttk.Scrollbar(self, command=self.tree.yview)
+        self.tree['yscroll'] = ysb.set
         self.tree.grid()
-        self.ysb.grid(row=0, column=1, sticky="ns")
-
+        ysb.grid(row=0, column=1, sticky="ns")
+        # load config file or default configurations and assign appropriate variables
         self.load_config(config_file_path)
         self.address = self.config.find('request_server').findtext('address')
         self.port = int(self.config.find('request_server').findtext('port'))
-
+        # start listening for TCP connections
         request_server = ThreadingTCPServer((self.address, self.port), ChatRequestHandler)
-        # can be called using self.server.queue from inside ChatRequestHandler
+        # can be called using self.server.queue from inside ChatRequestHandler class
         request_server.queue = self.msg_queue
         request_server_thread = Thread(target=request_server.serve_forever)
         # if main thread is closed, exit all other threads
@@ -62,8 +67,10 @@ class ChatMain(ttk.Frame):
         request_server.daemon_threads = True
         request_server_thread.start()
         # add menu commands after self.config exists
-        self.filemenu.add_command(label='Load Configuration', command=self.load_config)
-        self.filemenu.add_command(label='Add Connection', command=lambda: NewConnection(self.config))
+        filemenu.add_command(label='Load Configuration', command=self.load_config)
+        filemenu.add_command(label='Add Connection', command=lambda: NewConnection(self.config))
+        filemenu.add_separator()
+        filemenu.add_command(label="Exit", command=self.close)
         # start listener for messages placed on queue
         self.queue_listener_ptr = self.after(self.queue_listener_delay, self._poll_queue)
         # callback for closing window
@@ -85,16 +92,16 @@ class ChatMain(ttk.Frame):
         # No more logic so we don't wipe out any existing connections.
         if config_file_path:
             try:
-                tree = parse(config_file_path)
-                if iselement(tree.getroot()): # valid xml element from file
+                tree = ET.parse(config_file_path)
+                if ET.iselement(tree.getroot()): # valid xml element from file
                     self.config = tree
                     self.config_file_path = config_file_path
                 else: # invalid xml, don't write on close
-                    self.config = ElementTree(Element('socketchat'))
+                    self.config = ET.ElementTree(ET.Element('socketchat'))
                     create_elem_with_subs(self.config.getroot(), 'request_server',
                                           grandchild_elem_dict={'address': "", 'port': "12141"})
-            except (IOError, ParseError): # parse(non-existent file)
-                self.config = ElementTree(Element('socketchat'))
+            except (IOError, ET.ParseError): # parse(non-existent file)
+                self.config = ET.ElementTree(ET.Element('socketchat'))
                 create_elem_with_subs(self.config.getroot(), 'request_server',
                                       grandchild_elem_dict={'address': "", 'port': "12141"})
                 self.config_file_path = config_file_path
@@ -186,24 +193,32 @@ class ChatWindow(tk.Toplevel):
     timestamp_fmt = '%a, %b %d, %Y %H:%M:%S'
     def __init__(self, iid, displayname, address, port, *args, **kwargs):
         tk.Toplevel.__init__(self, name=iid, *args, **kwargs)
-        # ttk.Frame gets the default OS colors correct on MacOS
-        background_frame = ttk.Frame(self)
-        background_frame.grid()
-        self.displayname = displayname
-        self.address = address
-        self.port = port
-        self.title(self.displayname)
         self.resizable(0, 0) # not resizeable
         self.focus_force()
+        self.displayname = displayname
+        self.title(self.displayname)
+        self.address = address
+        self.port = port
         self.current_local_msg = ""
         self.timestamp = time.strftime(self.timestamp_fmt)
         # populate widgets
+        # ttk.Frame gets the default OS colors correct on MacOS
+        background_frame = ttk.Frame(self)
+        background_frame.grid()
+        menubar = tk.Menu(self)
+        filemenu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(menu=filemenu, label='File')
+        #TODO: pass params to NewConnection
+        #filemenu.add_command(label="Add Connection")#, command=lambda: NewConnection(self.config))
+        filemenu.add_separator()
+        filemenu.add_command(label="Close", command=self.destroy)
+        self.config(menu=menubar)
         self.display = scrolledtext.ScrolledText(background_frame, height=18, borderwidth=2,
                                                  relief=tk.SUNKEN, state=tk.DISABLED, wrap=tk.WORD)
         self.input = scrolledtext.ScrolledText(background_frame, height=10, wrap=tk.WORD,
                                                borderwidth=2, relief=tk.SUNKEN)
-        self.send = ttk.Button(background_frame, text='Send', width=15,
-                               command=self.send_and_display_msg)
+        send_button = ttk.Button(background_frame, text='Send', width=15,
+                                 command=self.send_and_display_msg)
         # text display tags - format how the text appears based on what generated the text
         self.display.tag_config('local', justify=tk.RIGHT)
         self.display.tag_config('error', foreground="red")
@@ -212,7 +227,7 @@ class ChatWindow(tk.Toplevel):
         # draw everything to screen
         self.display.grid()
         self.input.grid()
-        self.send.grid(sticky="e")
+        send_button.grid(sticky="e")
         # on startup, write the initial timestamp
         self.display_msg(self.timestamp, ('timestamp',))
         # bind Enter to Send button and Shift-Enter to place newline
@@ -276,16 +291,16 @@ class NewConnection(tk.Toplevel):
     listener_delay = 250 # ms
     def __init__(self, config_xml_tree, *args, **kwargs):
         tk.Toplevel.__init__(self, name='newconnection', *args, **kwargs)
-        background_frame = ttk.Frame(self)
-        background_frame.grid()
-        self.title('Add Connection')
         self.resizable(0, 0) # not resizeable
+        self.title('Add Connection')
+        self.focus_force()
         self.config = config_xml_tree
         self.hostname = tk.StringVar()
         self.displayname = tk.StringVar()
         self.address = tk.StringVar()
-        self.focus_force()
         # create the UI objects
+        background_frame = ttk.Frame(self)
+        background_frame.grid()
         ttk.Label(background_frame, text="hostname").grid()
         ttk.Entry(background_frame, textvariable=self.hostname, width=25).grid(row=0, column=1)
         ttk.Label(background_frame, text="displayname").grid()
@@ -372,9 +387,9 @@ def socket_send_msg(address, port, msg=None):
 def create_elem_with_subs(parent_elem, child_tag, attrib_dict={}, grandchild_elem_dict={}):
     """Extends the functionality of Element or SubElement to also create additional sub elements
     from a dictionary."""
-    child_elem = SubElement(parent_elem, child_tag, attrib_dict)
+    child_elem = ET.SubElement(parent_elem, child_tag, attrib_dict)
     for k, v in grandchild_elem_dict.items():
-        grandchild_elem = SubElement(child_elem, k)
+        grandchild_elem = ET.SubElement(child_elem, k)
         grandchild_elem.text = v
     return child_elem
 # END create_elem_with_subs()
