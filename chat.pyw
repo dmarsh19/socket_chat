@@ -53,7 +53,9 @@ class ChatMain(ttk.Frame):
         self.tree['yscroll'] = ysb.set
         self.tree.grid()
         ysb.grid(row=0, column=1, sticky="ns")
-        # load config file or default configurations and assign appropriate variables
+        # initialize default config
+        self.config = init_config()
+        # load config file if exists, overwrite default config
         self.load_config(config_file_path)
         self.address = self.config.find('request_server').findtext('address')
         self.port = int(self.config.find('request_server').findtext('port'))
@@ -92,18 +94,11 @@ class ChatMain(ttk.Frame):
         # No more logic so we don't wipe out any existing connections.
         if config_file_path:
             try:
-                tree = ET.parse(config_file_path)
-                if ET.iselement(tree.getroot()): # valid xml element from file
-                    self.config = tree
+                _tree = ET.parse(config_file_path)
+                if ET.iselement(_tree.getroot()): # valid xml element from file
                     self.config_file_path = config_file_path
-                else: # invalid xml, don't write on close
-                    self.config = ET.ElementTree(ET.Element('socketchat'))
-                    create_elem_with_subs(self.config.getroot(), 'request_server',
-                                          grandchild_elem_dict={'address': "", 'port': "12141"})
-            except (IOError, ET.ParseError): # parse(non-existent file)
-                self.config = ET.ElementTree(ET.Element('socketchat'))
-                create_elem_with_subs(self.config.getroot(), 'request_server',
-                                      grandchild_elem_dict={'address': "", 'port': "12141"})
+                    self.config = _tree
+            except (IOError, ET.ParseError): # non-existent file
                 self.config_file_path = config_file_path
 
             # kill existing ChatWindow(s) if connections not in new config.
@@ -384,13 +379,22 @@ def socket_send_msg(address, port, msg=None):
 # END socket_send_msg()
 
 
+def init_config():
+    """Write a default xml configuration tree to memory."""
+    tree = ET.ElementTree(ET.Element('socketchat'))
+    create_elem_with_subs(tree.getroot(), 'request_server',
+                          grandchild_elem_dict={'address': "", 'port': "12141"})
+    return tree
+# END init_config()
+
+
 def create_elem_with_subs(parent_elem, child_tag, attrib_dict={}, grandchild_elem_dict={}):
     """Extends the functionality of Element or SubElement to also create additional sub elements
     from a dictionary."""
     child_elem = ET.SubElement(parent_elem, child_tag, attrib_dict)
-    for k, v in grandchild_elem_dict.items():
-        grandchild_elem = ET.SubElement(child_elem, k)
-        grandchild_elem.text = v
+    for i in grandchild_elem_dict:
+        grandchild_elem = ET.SubElement(child_elem, i)
+        grandchild_elem.text = grandchild_elem_dict[i]
     return child_elem
 # END create_elem_with_subs()
 
