@@ -37,8 +37,8 @@ class ChatMain(ttk.Frame):
     - server to process incoming messages"""
     msg_queue = Queue()
     queue_listener_delay = 250 # ms
-    def __init__(self, config_file_path="socketchat.xml", *args, **kwargs):
-        ttk.Frame.__init__(self, name='chatmain', *args, **kwargs)
+    def __init__(self, config_file_path="socketchat.xml"):
+        ttk.Frame.__init__(self, name='chatmain')
         self.grid() # The Frame fills tk.master. Following widgets are built within Frame.
         self.master.resizable(0, 0) # not resizeable
         self.master.title('Socket Chat')
@@ -186,8 +186,8 @@ class ChatMain(ttk.Frame):
 class ChatWindow(tk.Toplevel):
     """Tkinter UI chat window with a single client."""
     timestamp_fmt = '%a, %b %d, %Y %H:%M:%S'
-    def __init__(self, iid, displayname, address, port, *args, **kwargs):
-        tk.Toplevel.__init__(self, name=iid, *args, **kwargs)
+    def __init__(self, iid, displayname, address, port):
+        tk.Toplevel.__init__(self, name=iid)
         self.resizable(0, 0) # not resizeable
         self.focus_force()
         self.displayname = displayname
@@ -203,8 +203,9 @@ class ChatWindow(tk.Toplevel):
         menubar = tk.Menu(self)
         filemenu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(menu=filemenu, label='File')
-        #TODO: pass params to NewConnection
-        #filemenu.add_command(label="Add Connection")#, command=lambda: NewConnection(self.config))
+        filemenu.add_command(label="Add Connection",
+                             command=lambda: NewConnection(self.master.children['chatmain'].config,
+                                                           address=self.address))
         filemenu.add_separator()
         filemenu.add_command(label="Close", command=self.destroy)
         self.config(menu=menubar)
@@ -284,8 +285,8 @@ class ChatWindow(tk.Toplevel):
 class NewConnection(tk.Toplevel):
     """Tkinter UI popup to add connection to xml."""
     listener_delay = 250 # ms
-    def __init__(self, config_xml_tree, *args, **kwargs):
-        tk.Toplevel.__init__(self, name='newconnection', *args, **kwargs)
+    def __init__(self, config_xml_tree, **kwargs):
+        tk.Toplevel.__init__(self, name='newconnection')
         self.resizable(0, 0) # not resizeable
         self.title('Add Connection')
         self.focus_force()
@@ -293,6 +294,9 @@ class NewConnection(tk.Toplevel):
         self.hostname = tk.StringVar()
         self.displayname = tk.StringVar()
         self.address = tk.StringVar()
+        self.hostname.set(kwargs.pop('hostname', ""))
+        self.displayname.set(kwargs.pop('displayname', ""))
+        self.address.set(kwargs.pop('address', ""))
         # create the UI objects
         background_frame = ttk.Frame(self)
         background_frame.grid()
