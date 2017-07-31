@@ -1,8 +1,25 @@
 #!/usr/bin/env python3
 """
--menu on ChatWindow. Add connection if not in config
--NewConnection user message if connection already exists
-try:except around imports avoids having separate versions of script for python2 or python3
+Socket Chat: A portable, lightweight LAN Messenger
+
+AUTHOR: Derek Marsh
+EMAIL: derek@admrsh.com
+PURPOSE:
+A standalone Python script that facilitates basic chat functionality between machines on a
+single network.
+DESIGN GOALS:
+Portability across environments.
+-A single script and single configuration file.
+-Functional on major operating systems (Windows, MacOS, and Linux/GNU).
+-Can run from Python2 or Python3.
+-Python builtin modules only. No additional libraries to download.
+-Configuration as a flat file.
+REQUIREMENTS:
+-Python - Python3 Recommended. Python2 is supported, in MacOS or Linux, change shebang from
+ #!/usr/bin/env python3 to #!/usr/bin/env python
+-tkinter - standard Python GUI interface based on Tcl/Tk and included in most Python installations
+ (standard MacOS Python installation may not include up-to-date package. See: https://www.python.org/download/mac/tcltk/)
+-IPv4 (IPv6 currently not supported)
 """
 import os
 import time
@@ -139,14 +156,7 @@ class ChatMain(ttk.Frame):
 
     def _poll_queue(self):
         """Poll a queue.Queue() until returns True. Pass message from queue to
-        ChatWindow based on addr.
-
-        1. Try to retrieve connection id from config using addr.
-            a. if not found, assign addr as id
-        2. Check if ChatWindow with matching id is already open.
-            a. if not open, use id to retrieve displayname from config.
-                i. if no match in config, socket call for displayname.
-            b. Spawn new ChatWindow."""
+        ChatWindow based on addr."""
         while not self.msg_queue.empty():
             addr, msg = self.msg_queue.get_nowait()
             # Try to retrieve connection id from config using addr
@@ -211,7 +221,7 @@ class ChatWindow(tk.Toplevel):
         menubar.add_cascade(menu=filemenu, label='File')
         filemenu.add_command(label="Add Connection",
                              command=lambda: NewConnection(self.master.children['chatmain'].config,
-                                                           address=self.address))
+                                                           host=self.address))
         filemenu.add_separator()
         filemenu.add_command(label="Close", command=self.destroy)
         # text display tags - format how the text appears based on what generated the text
@@ -274,8 +284,8 @@ class ChatWindow(tk.Toplevel):
         """If current timestamp is older than 5 minutes, update to new time and
         print to display window. Called from within display_msg()."""
         ret = None
-        five_min_ago = datetime.datetime.now() - datetime.timedelta(minutes=5)
-        if datetime.datetime.strptime(self.timestamp, self.timestamp_fmt) <= five_min_ago:
+        _five_min_ago = datetime.datetime.now() - datetime.timedelta(minutes=5)
+        if datetime.datetime.strptime(self.timestamp, self.timestamp_fmt) <= _five_min_ago:
             self.timestamp = time.strftime(self.timestamp_fmt)
             ret = self.timestamp
         return ret
@@ -285,53 +295,38 @@ class ChatWindow(tk.Toplevel):
 
 class NewConnection(tk.Toplevel):
     """GUI popup form to add connection to xml.
-    
+
     Ability to pass in keyword arguments to populate fields on startup."""
     listener_delay = 250 # ms
     def __init__(self, config_xml_tree, **kwargs):
         tk.Toplevel.__init__(self, name='newconnection')
         self.config = config_xml_tree
-        self.hostname = tk.StringVar()
+        self.host = tk.StringVar()
         self.displayname = tk.StringVar()
-        self.address = tk.StringVar()
         # instantiate GUI widgets
         background_frame = ttk.Frame(self)
-        button_frame = ttk.Frame(background_frame) # additional frame to center buttons
-        self.lookup_button = ttk.Button(button_frame, text="address lookup", width=15,
-                                        command=lambda: self.address.set(socket.gethostbyname(self.hostname.get())))
-        self.add_button = ttk.Button(button_frame, text="Add", width=10, command=self._add)
+        self.add_button = ttk.Button(background_frame, text="Add", width=10, command=self._add)
         # no reference to these widgets are needed so they can be drawn immediately
-        ttk.Label(background_frame, text="hostname").grid()
-        ttk.Entry(background_frame, textvariable=self.hostname, width=25).grid(row=0, column=1)
+        ttk.Label(background_frame, text="hostname or IPv4 address").grid()
+        ttk.Entry(background_frame, textvariable=self.host, width=25).grid()
         ttk.Label(background_frame, text="displayname").grid()
-        ttk.Entry(background_frame, textvariable=self.displayname, width=25).grid(row=1, column=1)
-        ttk.Label(background_frame, text="address").grid()
-        ttk.Entry(background_frame, textvariable=self.address, width=25).grid(row=2, column=1)
+        ttk.Entry(background_frame, textvariable=self.displayname, width=25).grid()
         # configure GUI widgets
         self.resizable(0, 0) # not resizeable
         self.title('Add Connection')
         self.focus_force()
-        self.hostname.set(kwargs.pop('hostname', ""))
+        self.host.set(kwargs.pop('host', ""))
         self.displayname.set(kwargs.pop('displayname', ""))
-        self.address.set(kwargs.pop('address', ""))
-        self.lookup_button.state(['disabled'])
-        self.add_button.state(['disabled'])
         # draw GUI to screen
         background_frame.grid()
-        self.lookup_button.grid()
-        self.add_button.grid(row=0, column=1)
-        button_frame.grid(columnspan=2)
+        self.add_button.grid()
         # start the listener to check if fields are populated
         self._listener()
     # END __init__()
 
     def _listener(self):
         """Enable/disable buttons if fields are populated."""
-        if self.hostname.get():
-            self.lookup_button.state(['!disabled'])
-        else:
-            self.lookup_button.state(['disabled'])
-        if self.hostname.get() and self.displayname.get() and self.address.get():
+        if self.host.get() and self.displayname.get():
             # bind Enter to Add button
             self.bind('<Return>', self._add)
             self.add_button.state(['!disabled'])
@@ -341,16 +336,25 @@ class NewConnection(tk.Toplevel):
         self.after(self.listener_delay, self._listener)
     # END _listener()
 
+    def _lookup(self):
+        """Use the host field to resolve ip address and hostname."""
+        # IPv4 only - if IPv6, change indexing
+        addr = socket.getaddrinfo(self.host.get(), None, socket.AF_INET)[0][4][0]
+        hostname = socket.getfqdn(addr).split('.')[0]
+        return addr, hostname
+    # END _lookup()
+
     def _add(self, *args, **kwargs):
         """Callback for Add button to write to configuration and populate in list if does not exist."""
         # parse the xml to see if a connection with same address already exists
-        conn_elem = self.config.find(".//connection[address='{}']".format(self.address.get()))
+        addr, hostname = self._lookup()
+        conn_elem = self.config.find(".//connection[address='{}']".format(addr))
         if conn_elem is None:
             new_conn_elem = create_elem_with_subs(self.config.getroot(), 'connection',
                                                   {'id': str(uuid4())},
-                                                  {'hostname': self.hostname.get().upper(),
+                                                  {'hostname': hostname,
                                                    'displayname': self.displayname.get(),
-                                                   'address': self.address.get()})
+                                                   'address': addr})
             self.master.children['chatmain'].populate_connection(new_conn_elem)
         self.destroy()
     # END _add()
