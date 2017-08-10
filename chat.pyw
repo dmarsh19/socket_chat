@@ -1,8 +1,25 @@
 #!/usr/bin/env python3
 """
--menu on ChatWindow. Add connection if not in config
--NewConnection user message if connection already exists
--load_config populate_connection map() in Python3
+Socket Chat: A portable, lightweight LAN Messenger
+
+AUTHOR: Derek Marsh
+EMAIL: derek@admrsh.com
+PURPOSE:
+A standalone Python script that facilitates basic chat functionality between machines on a
+single network.
+DESIGN GOALS:
+Portability across environments.
+-A single script and single configuration file.
+-Functional on major operating systems (Windows, MacOS, and Linux/GNU).
+-Can run from Python2 or Python3.
+-Python builtin modules only. No additional libraries to download.
+-Configuration as a flat file.
+REQUIREMENTS:
+-Python - Python3 Recommended. Python2 is supported, in MacOS or Linux, change shebang from
+ #!/usr/bin/env python3 to #!/usr/bin/env python
+-tkinter - standard Python GUI interface based on Tcl/Tk and included in most Python installations
+ (standard MacOS Python installation may not include up-to-date package. See: https://www.python.org/download/mac/tcltk/)
+-IPv4 (IPv6 currently not supported)
 """
 import os
 import time
@@ -10,10 +27,10 @@ import datetime
 import socket
 from uuid import uuid4
 from threading import Thread
-from xml.etree.ElementTree import ElementTree, Element, SubElement, parse, iselement, ParseError
-try:
+try: # python3
     from queue import Queue
     from socketserver import ThreadingTCPServer, BaseRequestHandler
+    from xml.etree import ElementTree as ET
     import tkinter as tk
     from tkinter import ttk
     from tkinter import filedialog as tkfiledialog
@@ -21,6 +38,7 @@ try:
 except ImportError:
     from Queue import Queue
     from SocketServer import ThreadingTCPServer, BaseRequestHandler
+    from xml.etree import cElementTree as ET
     import Tkinter as tk
     import ttk
     import tkFileDialog as tkfiledialog
@@ -28,59 +46,64 @@ except ImportError:
 
 
 class ChatMain(ttk.Frame):
-    """Starts the chat application, including:
-    - List of hosts that can be messaged
-    - read/write configuration
-    - server to process incoming messages"""
+    """Singleton in charge of starting & running the application, including:
+    - GUI of available connections
+    - configuration manager - load on startup or at user request and write on close
+    - start threaded server to process incoming messages"""
     msg_queue = Queue()
     queue_listener_delay = 250 # ms
-    def __init__(self, config_file_path="socketchat.xml", *args, **kwargs):
-        ttk.Frame.__init__(self, name='chatmain', *args, **kwargs)
-        # build ui
-        self.grid() # The Frame fills tk.master. Following widgets are built within Frame.
-        self.master.resizable(0, 0) # not resizeable
-        self.master.title('Socket Chat')
-        # grab focus
-        self.focus_force()
-        self.menu = tk.Menu(self)
-        self.filemenu = tk.Menu(self.menu, tearoff=0)
-        self.menu.add_cascade(menu=self.filemenu, label='File')
+    def __init__(self, config_file_path="socketchat.xml"):
+        ttk.Frame.__init__(self, name='chatmain')
+        # instantiate GUI widgets
         self.tree = ttk.Treeview(self, show='tree', selectmode='browse')
-        self.ysb = ttk.Scrollbar(self, command=self.tree.yview)
-        self.tree['yscroll'] = self.ysb.set
-        self.master.config(menu=self.menu)
-        self.tree.grid()
-        self.ysb.grid(row=0, column=1, sticky="ns")
-
+        ysb = ttk.Scrollbar(self, command=self.tree.yview)
+        menubar = tk.Menu(self)
+        filemenu = tk.Menu(menubar, tearoff=0)
+        # initialize default configuration
+        self.config = init_config()
+        # load config file if exists, overwrite default config
         self.load_config(config_file_path)
         self.address = self.config.find('request_server').findtext('address')
         self.port = int(self.config.find('request_server').findtext('port'))
-
+        # start listening for TCP connections
         request_server = ThreadingTCPServer((self.address, self.port), ChatRequestHandler)
-        # can be called using self.server.queue from inside ChatRequestHandler
+        # request_server get reference to msg_queue
+        # Called using self.server.queue from inside ChatRequestHandler class
         request_server.queue = self.msg_queue
         request_server_thread = Thread(target=request_server.serve_forever)
         # if main thread is closed, exit all other threads
         request_server_thread.daemon = True
         request_server.daemon_threads = True
         request_server_thread.start()
-        # add menu commands after config is loaded
-        self.filemenu.add_command(label='Load Configuration', command=self.load_config)
-        self.filemenu.add_command(label='Add Connection', command=lambda: NewConnection(self.config))
+        # configure GUI widgets
+        self.master.resizable(0, 0) # not resizeable
+        self.master.title('Socket Chat')
+        self.focus_force() # grab focus
+        self.tree['yscroll'] = ysb.set # link scrolling action to tree
+        menubar.add_cascade(menu=filemenu, label='File') # File menu as a dropdown of menubar
+        filemenu.add_command(label='Load Configuration', command=self.load_config)
+        filemenu.add_command(label='Add Connection', command=lambda: NewConnection(self.config))
+        filemenu.add_separator()
+        filemenu.add_command(label="Exit", command=self.close)
         # start listener for messages placed on queue
         self.queue_listener_ptr = self.after(self.queue_listener_delay, self._poll_queue)
         # callback for closing window
         self.master.protocol('WM_DELETE_WINDOW', self.close)
+        # draw GUI to screen
+        self.grid()
+        self.tree.grid()
+        ysb.grid(row=0, column=1, sticky="ns")
+        self.master.config(menu=menubar)
     # END __init__()
 
     def load_config(self, config_file_path=None):
-        """Callable function, run from the menu, in order to assist user in selecting an xml file.
-        Passes the file to perform the logic of loading/refreshing the connections.
-        -config_file_path=None: 'Load Configuration' was called from ChatMain menu. Prompt user to
-          select file. Try to load if selected. If cancel selection, do nothing."""
+        """Read a configuration xml and repopulate the list of available connections.
+
+        If no configuration file passed, Prompt user to select a file.
+        Destroy any chat windows that are not part of the new configuration."""
         if not config_file_path:
-            filetypes = (("All types", "*.*"), ("eXtensible Markup Language file", "*.xml"))
-            config_file_path = tkfiledialog.askopenfilename(parent=self, filetypes=filetypes,
+            _filetypes = (("All types", "*.*"), ("eXtensible Markup Language file", "*.xml"))
+            config_file_path = tkfiledialog.askopenfilename(parent=self, filetypes=_filetypes,
                                                             title='Load Configuration',
                                                             defaultextension=".xml",
                                                             initialdir=os.path.abspath('.'))
@@ -88,44 +111,36 @@ class ChatMain(ttk.Frame):
         # No more logic so we don't wipe out any existing connections.
         if config_file_path:
             try:
-                tree = parse(config_file_path)
-                if iselement(tree.getroot()): # valid xml element from file
-                    self.config = tree
+                _tree = ET.parse(config_file_path)
+                if ET.iselement(_tree.getroot()): # valid xml element from file
                     self.config_file_path = config_file_path
-                else: # invalid xml, don't write on close
-                    self.config = ElementTree(Element('socketchat'))
-                    create_elem_with_subs(self.config.getroot(), 'request_server',
-                                          grandchild_elem_dict={'address': "", 'port': "12141"})
-            except (IOError, ParseError): # parse(non-existent file)
-                self.config = ElementTree(Element('socketchat'))
-                create_elem_with_subs(self.config.getroot(), 'request_server',
-                                      grandchild_elem_dict={'address': "", 'port': "12141"})
+                    self.config = _tree
+            except (IOError, ET.ParseError): # non-existent file
                 self.config_file_path = config_file_path
 
-            # kill existing ChatWindow(s). No longer guaranteed reference to their connection info.
-            # use set of widget names, do not destroy using name directly from iter.
-            for iid in [k for k in self.master.children]:
-                if iid != 'chatmain' and iid not in [c.get('id') for c in self.config.iter('connection')]:
+            # kill existing ChatWindow(s) if connections not in new config.
+            # No longer guaranteed reference to their connection info.
+            # use list of widget names, do not destroy directly from iter.
+            for iid in [i for i in self.master.children]:
+                if iid != 'chatmain' and iid not in [j.get('id') for j in self.config.iter('connection')]:
                     self.master.children[iid].destroy()
-            #TODO: map() calls work in 2.7, not in 3
             # drop existing values in the tree if any
-            [self.tree.delete(child) for child in self.tree.get_children()]
-            #map(self.tree.delete, self.tree.get_children())
+            # * - splat operator; i.e. 'unpacking argument lists'
+            self.tree.delete(*self.tree.get_children())
             # load new data to tree
-            [self.populate_connection(conn_elem) for conn_elem in self.config.iter('connection')]
-            #map(self.populate_connection, self.config.iter('connection'))
+            [self.populate_connection(i) for i in self.config.iter('connection')]
     # END load_config()
 
     def populate_connection(self, conn_elem):
-        """Add connections to ui tree. Add mapping of address to iid in lookup dict."""
+        """Add a connection to the GUI list."""
         self.tree.insert('', 'end', iid=conn_elem.get('id'),
                          text=conn_elem.findtext('displayname'), tags='#entry')
-        # bind the callback on every obj that has the #entry tag
+        # bind a callback on every obj that has the #entry tag to fire when clicked
         self.tree.tag_bind('#entry', '<<TreeviewSelect>>', self._click_connection)
     # END populate_connection()
 
     def _click_connection(self, *args, **kwargs):
-        """callback on click of row in tree."""
+        """Callback for clicking connection in list. Display opened chat window or open a new window."""
         iid = self.tree.focus()
         if iid in self.master.children:
             # set focus to existing window
@@ -133,7 +148,7 @@ class ChatMain(ttk.Frame):
             self.master.children[iid].focus_set()
         else:
             conn_elem = self.config.find(".//connection[@id='{}']".format(iid))
-            if conn_elem is not None: # FutureWarning
+            if conn_elem is not None:
                 displayname = conn_elem.findtext('displayname')
                 address = conn_elem.findtext('address')
                 ChatWindow(iid, displayname, address, self.port)
@@ -141,79 +156,90 @@ class ChatMain(ttk.Frame):
 
     def _poll_queue(self):
         """Poll a queue.Queue() until returns True. Pass message from queue to
-        ChatWindow based on addr.
-
-        First, try to match address to iid from existing connection in config xml.
-        Then, see if ChatWindow with matching iid is already open.
-          If not, re-check config xml to fetch displayname.
-          If not, in config xml, spawn a new ChatWindow with new iid and hostname as displayname."""
+        ChatWindow based on addr."""
         while not self.msg_queue.empty():
             addr, msg = self.msg_queue.get_nowait()
-            # map address to iid in config xml
+            # Try to retrieve connection id from config using addr
             conn_elem = self.config.find(".//connection[address='{}']".format(addr))
             if conn_elem is not None:
                 iid = conn_elem.get('id')
-            else:
-                iid = None
-            # need to spawn a new ChatWindow
-            if iid not in self.master.children:
+            else: # id not found, assign addr as id
+                # tkinter uses 'dot' naming convention to signify ancestry of widgets.
+                # thus, we can't leave the addr in the standard format.
+                iid = addr.replace('.', '-')
+            # Check if ChatWindow with matching id is already open
+            try:
+                chat_window = self.master.children[iid]
+            except KeyError: # window not open, use id to retrieve displayname from config
                 conn_elem = self.config.find(".//connection[@id='{}']".format(iid))
                 if conn_elem is not None:
                     displayname = conn_elem.findtext('displayname')
-                else:
-                    iid = str(uuid4())
+                else: # no match in config, socket call for displayname
                     displayname = socket.getfqdn(addr).split('.')[0]
-                ChatWindow(iid, displayname, addr, self.port)
-            self.master.children[iid].display_msg('{}:'.format(self.master.children[iid].displayname), ('displayname',))
-            self.master.children[iid].display_msg(msg)
+                # Spawn new ChatWindow
+                chat_window = ChatWindow(iid, displayname, addr, self.port)
+            chat_window.display_msg('{}:'.format(chat_window.displayname), ('displayname',))
+            chat_window.display_msg(msg)
         self.queue_listener_ptr = self.after(self.queue_listener_delay, self._poll_queue)
     # END _poll_queue()
 
     def close(self):
-        """Callback on window close to write config to file."""
+        """Callback on window close to write config to file if there are connections."""
         if hasattr(self, 'config_file_path'):
-            self.config.write(self.config_file_path, "UTF-8", True)
+            if self.config.findall('connection'):
+                self.config.write(self.config_file_path, "UTF-8", True)
         self.master.destroy()
     # END close()
 # END ChatMain
 
 
 class ChatWindow(tk.Toplevel):
-    """Tkinter UI chat window with a single client."""
+    """Chat GUI interface to send & receive messages from a single client."""
     timestamp_fmt = '%a, %b %d, %Y %H:%M:%S'
-    def __init__(self, iid, displayname, address, port, *args, **kwargs):
-        tk.Toplevel.__init__(self, name=iid, *args, **kwargs)
-        # ttk.Frame gets the default OS colors correct on MacOS
-        background_frame = ttk.Frame(self)
-        background_frame.grid()
-        self.displayname = displayname
+    def __init__(self, iid, displayname, address, port):
+        tk.Toplevel.__init__(self, name=iid)
         self.address = address
         self.port = port
-        self.title(self.displayname)
-        self.resizable(0, 0) # not resizeable
-        self.focus_force()
+        self.displayname = displayname
         self.current_local_msg = ""
         self.timestamp = time.strftime(self.timestamp_fmt)
-        # populate widgets
-        self.display = scrolledtext.ScrolledText(background_frame, height=18,
-                                                 state=tk.DISABLED, wrap=tk.WORD)
-        self.input = scrolledtext.ScrolledText(background_frame, height=10, wrap=tk.WORD)
-        self.send = ttk.Button(background_frame, text='Send', width=15,
-                               command=self.send_and_display_msg)
+        # instantiate GUI widgets
+        # ttk.Frame gets the default OS colors correct on MacOS
+        background_frame = ttk.Frame(self)
+        self.display = scrolledtext.ScrolledText(background_frame, height=18, borderwidth=2,
+                                                 relief=tk.SUNKEN, state=tk.DISABLED, wrap=tk.WORD)
+        self.input = scrolledtext.ScrolledText(background_frame, height=10, wrap=tk.WORD,
+                                               borderwidth=2, relief=tk.SUNKEN)
+        send_button = ttk.Button(background_frame, text='Send', width=15,
+                                 command=self.send_and_display_msg)
+        menubar = tk.Menu(self)
+        filemenu = tk.Menu(menubar, tearoff=0)
+        # configure GUI widgets
+        self.resizable(0, 0) # not resizeable
+        self.focus_force()
+        self.title(self.displayname)
+        menubar.add_cascade(menu=filemenu, label='File')
+        filemenu.add_command(label="Add Connection",
+                             command=lambda: NewConnection(self.master.children['chatmain'].config,
+                                                           host=self.address))
+        filemenu.add_separator()
+        filemenu.add_command(label="Close", command=self.destroy)
         # text display tags - format how the text appears based on what generated the text
         self.display.tag_config('local', justify=tk.RIGHT)
         self.display.tag_config('error', foreground="red")
         self.display.tag_config('timestamp', justify=tk.CENTER, foreground="gray")
         self.display.tag_config('displayname', foreground="blue")
-        # draw everything to screen
+        # bind Enter to Send button and Shift-Enter to place newline
+        self.bind('<Return>', self.send_and_display_msg)
+        self.bind('<Shift-Return>', lambda e: "break")
+        # draw GUI to screen
+        background_frame.grid()
         self.display.grid()
         self.input.grid()
-        self.send.grid(sticky="e")
+        send_button.grid(sticky="e")
+        self.config(menu=menubar)
         # on startup, write the initial timestamp
         self.display_msg(self.timestamp, ('timestamp',))
-        # bind Enter to Send button and ALT-Enter to place newline
-        self.bind('<Return>', self.send_and_display_msg)
-        self.bind('<Alt-Return>', lambda e: "break")
     # END __init__()
 
     def _fetch_local_msg(self):
@@ -229,7 +255,7 @@ class ChatWindow(tk.Toplevel):
     # END _fetch_local_msg()
 
     def display_msg(self, msg, text_tags=None):
-        """Write msg to chat display window.
+        """Write msg to local chat display window.
 
         text_tags should be a tuple:
         ex: ('local',)"""
@@ -258,8 +284,8 @@ class ChatWindow(tk.Toplevel):
         """If current timestamp is older than 5 minutes, update to new time and
         print to display window. Called from within display_msg()."""
         ret = None
-        five_min_ago = datetime.datetime.now() - datetime.timedelta(minutes=5)
-        if datetime.datetime.strptime(self.timestamp, self.timestamp_fmt) <= five_min_ago:
+        _five_min_ago = datetime.datetime.now() - datetime.timedelta(minutes=5)
+        if datetime.datetime.strptime(self.timestamp, self.timestamp_fmt) <= _five_min_ago:
             self.timestamp = time.strftime(self.timestamp_fmt)
             ret = self.timestamp
         return ret
@@ -268,46 +294,39 @@ class ChatWindow(tk.Toplevel):
 
 
 class NewConnection(tk.Toplevel):
-    """Tkinter UI popup to add connection to xml."""
+    """GUI popup form to add connection to xml.
+
+    Ability to pass in keyword arguments to populate fields on startup."""
     listener_delay = 250 # ms
-    def __init__(self, config_xml_tree, *args, **kwargs):
-        tk.Toplevel.__init__(self, name='newconnection', *args, **kwargs)
-        background_frame = ttk.Frame(self)
-        background_frame.grid()
-        self.title('Add Connection')
-        self.resizable(0, 0) # not resizeable
+    def __init__(self, config_xml_tree, **kwargs):
+        tk.Toplevel.__init__(self, name='newconnection')
         self.config = config_xml_tree
-        self.hostname = tk.StringVar()
+        self.host = tk.StringVar()
         self.displayname = tk.StringVar()
-        self.address = tk.StringVar()
-        self.focus_force()
-        # create the UI objects
-        ttk.Label(background_frame, text="hostname").grid()
-        ttk.Entry(background_frame, textvariable=self.hostname, width=25).grid(row=0, column=1)
+        # instantiate GUI widgets
+        background_frame = ttk.Frame(self)
+        self.add_button = ttk.Button(background_frame, text="Add", width=10, command=self._add)
+        # no reference to these widgets are needed so they can be drawn immediately
+        ttk.Label(background_frame, text="hostname or IPv4 address").grid()
+        ttk.Entry(background_frame, textvariable=self.host, width=25).grid()
         ttk.Label(background_frame, text="displayname").grid()
-        ttk.Entry(background_frame, textvariable=self.displayname, width=25).grid(row=1, column=1)
-        ttk.Label(background_frame, text="address").grid()
-        ttk.Entry(background_frame, textvariable=self.address, width=25).grid(row=2, column=1)
-        button_frame = ttk.Frame(background_frame) # additional frame to center buttons
-        self.lookup_button = ttk.Button(button_frame, text="address lookup", width=13,
-                                        command=lambda: self.address.set(socket.gethostbyname(self.hostname.get())))
-        self.lookup_button.state(['disabled'])
-        self.add_button = ttk.Button(button_frame, text="Add", width=10, command=self._add)
-        self.add_button.state(['disabled'])
-        self.lookup_button.grid()
-        self.add_button.grid(row=0, column=1)
-        button_frame.grid(columnspan=2)
+        ttk.Entry(background_frame, textvariable=self.displayname, width=25).grid()
+        # configure GUI widgets
+        self.resizable(0, 0) # not resizeable
+        self.title('Add Connection')
+        self.focus_force()
+        self.host.set(kwargs.pop('host', ""))
+        self.displayname.set(kwargs.pop('displayname', ""))
+        # draw GUI to screen
+        background_frame.grid()
+        self.add_button.grid()
         # start the listener to check if fields are populated
         self._listener()
     # END __init__()
 
     def _listener(self):
-        """check if the fields are populated before buttons are active."""
-        if self.hostname.get():
-            self.lookup_button.state(['!disabled'])
-        else:
-            self.lookup_button.state(['disabled'])
-        if self.hostname.get() and self.displayname.get() and self.address.get():
+        """Enable/disable buttons if fields are populated."""
+        if self.host.get() and self.displayname.get():
             # bind Enter to Add button
             self.bind('<Return>', self._add)
             self.add_button.state(['!disabled'])
@@ -317,16 +336,25 @@ class NewConnection(tk.Toplevel):
         self.after(self.listener_delay, self._listener)
     # END _listener()
 
+    def _lookup(self):
+        """Use the host field to resolve ip address and hostname."""
+        # IPv4 only - if IPv6, change indexing
+        addr = socket.getaddrinfo(self.host.get(), None, socket.AF_INET)[0][4][0]
+        hostname = socket.getfqdn(addr).split('.')[0]
+        return addr, hostname
+    # END _lookup()
+
     def _add(self, *args, **kwargs):
-        """callback for Add button."""
+        """Callback for Add button to write to configuration and populate in list if does not exist."""
         # parse the xml to see if a connection with same address already exists
-        conn_elem = self.config.find(".//connection[address='{}']".format(self.address.get()))
-        if conn_elem is None: #TODO: notify user of existing connection
+        addr, hostname = self._lookup()
+        conn_elem = self.config.find(".//connection[address='{}']".format(addr))
+        if conn_elem is None:
             new_conn_elem = create_elem_with_subs(self.config.getroot(), 'connection',
                                                   {'id': str(uuid4())},
-                                                  {'hostname': self.hostname.get().upper(),
+                                                  {'hostname': hostname,
                                                    'displayname': self.displayname.get(),
-                                                   'address': self.address.get()})
+                                                   'address': addr})
             self.master.children['chatmain'].populate_connection(new_conn_elem)
         self.destroy()
     # END _add()
@@ -365,13 +393,22 @@ def socket_send_msg(address, port, msg=None):
 # END socket_send_msg()
 
 
+def init_config():
+    """Write a default xml configuration tree to memory."""
+    tree = ET.ElementTree(ET.Element('socketchat'))
+    create_elem_with_subs(tree.getroot(), 'request_server',
+                          grandchild_elem_dict={'address': "", 'port': "12141"})
+    return tree
+# END init_config()
+
+
 def create_elem_with_subs(parent_elem, child_tag, attrib_dict={}, grandchild_elem_dict={}):
     """Extends the functionality of Element or SubElement to also create additional sub elements
     from a dictionary."""
-    child_elem = SubElement(parent_elem, child_tag, attrib_dict)
-    for k, v in grandchild_elem_dict.items():
-        grandchild_elem = SubElement(child_elem, k)
-        grandchild_elem.text = v
+    child_elem = ET.SubElement(parent_elem, child_tag, attrib_dict)
+    for i in grandchild_elem_dict:
+        grandchild_elem = ET.SubElement(child_elem, i)
+        grandchild_elem.text = grandchild_elem_dict[i]
     return child_elem
 # END create_elem_with_subs()
 
